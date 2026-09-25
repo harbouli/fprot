@@ -28,7 +28,16 @@ const project = (() => {
 })();
 
 module.exports = {
-  ...(project ? { project } : undefined),
+  ...(project
+    ? {
+        project: {
+          ...project,
+          ios: project.ios
+            ? { ...project.ios, automaticPodsInstallation: false }
+            : undefined,
+        },
+      }
+    : undefined),
   dependencies: {
     [pkg.name]: {
       root: path.join(__dirname, '..'),

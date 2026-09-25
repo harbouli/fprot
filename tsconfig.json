@@ -2,6 +2,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
+      "@harbouli/fprot": ["./src/index"],
       "fprot": ["./src/index"]
     },
     "allowUnreachableCode": false,

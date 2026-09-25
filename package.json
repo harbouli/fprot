@@ -1,6 +1,6 @@
 {
   "name": "@harbouli/fprot",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Encrypted peer-to-peer TCP messaging negotiated over WebRTC for React Native",
   "main": "./lib/module/index.js",
   "module": "./lib/module/index.js",

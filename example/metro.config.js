@@ -16,4 +16,12 @@ const config = withMetroConfig(getDefaultConfig(__dirname), {
   conditions: ['fprot-source'],
 });
 
+config.resolver = {
+  ...config.resolver,
+  extraNodeModules: {
+    ...config.resolver?.extraNodeModules,
+    fprot: root,
+  },
+};
+
 module.exports = config;

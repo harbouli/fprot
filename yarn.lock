@@ -1689,6 +1689,44 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@harbouli/fprot@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@harbouli/fprot@workspace:."
+  dependencies:
+    "@eslint/compat": "npm:^2.1.0"
+    "@eslint/eslintrc": "npm:^3.3.6"
+    "@eslint/js": "npm:^9.39.5"
+    "@jest/globals": "npm:^29.7.0"
+    "@react-native/babel-preset": "npm:0.86.2"
+    "@react-native/eslint-config": "npm:0.86.2"
+    "@react-native/jest-preset": "npm:0.86.2"
+    "@release-it/conventional-changelog": "npm:^12.0.0"
+    "@types/react": "npm:^19.2.0"
+    "@types/ws": "npm:^8.18.1"
+    del-cli: "npm:^7.0.0"
+    eslint: "npm:^9.39.5"
+    eslint-config-prettier: "npm:^10.1.8"
+    eslint-plugin-ft-flow: "npm:^3.0.11"
+    eslint-plugin-prettier: "npm:^5.5.6"
+    jest: "npm:^29.7.0"
+    prettier: "npm:^3.9.6"
+    react: "npm:19.2.3"
+    react-native: "npm:0.86.2"
+    react-native-builder-bob: "npm:^0.43.1"
+    react-native-webrtc: "npm:^124.0.8"
+    release-it: "npm:^21.0.1"
+    turbo: "npm:^2.10.8"
+    typescript: "npm:^6.0.3"
+    ws: "npm:^8.21.3"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+    react-native-webrtc: ">=124.0.8"
+  bin:
+    fprot-signaling: bin/fprot-signaling.js
+  languageName: unknown
+  linkType: soft
+
 "@humanfs/core@npm:^0.19.2":
   version: 0.19.2
   resolution: "@humanfs/core@npm:0.19.2"
@@ -6081,44 +6119,6 @@ __metadata:
     react-native-safe-area-context: "npm:^5.10.0"
     react-native-test-app: "npm:^5.4.12"
     react-native-webrtc: "npm:^124.0.8"
-  languageName: unknown
-  linkType: soft
-
-"fprot@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "fprot@workspace:."
-  dependencies:
-    "@eslint/compat": "npm:^2.1.0"
-    "@eslint/eslintrc": "npm:^3.3.6"
-    "@eslint/js": "npm:^9.39.5"
-    "@jest/globals": "npm:^29.7.0"
-    "@react-native/babel-preset": "npm:0.86.2"
-    "@react-native/eslint-config": "npm:0.86.2"
-    "@react-native/jest-preset": "npm:0.86.2"
-    "@release-it/conventional-changelog": "npm:^12.0.0"
-    "@types/react": "npm:^19.2.0"
-    "@types/ws": "npm:^8.18.1"
-    del-cli: "npm:^7.0.0"
-    eslint: "npm:^9.39.5"
-    eslint-config-prettier: "npm:^10.1.8"
-    eslint-plugin-ft-flow: "npm:^3.0.11"
-    eslint-plugin-prettier: "npm:^5.5.6"
-    jest: "npm:^29.7.0"
-    prettier: "npm:^3.9.6"
-    react: "npm:19.2.3"
-    react-native: "npm:0.86.2"
-    react-native-builder-bob: "npm:^0.43.1"
-    react-native-webrtc: "npm:^124.0.8"
-    release-it: "npm:^21.0.1"
-    turbo: "npm:^2.10.8"
-    typescript: "npm:^6.0.3"
-    ws: "npm:^8.21.3"
-  peerDependencies:
-    react: "*"
-    react-native: "*"
-    react-native-webrtc: ">=124.0.8"
-  bin:
-    fprot-signaling: ./bin/fprot-signaling.js
   languageName: unknown
   linkType: soft
 
