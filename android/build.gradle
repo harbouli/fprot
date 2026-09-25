@@ -1,0 +1,57 @@
+buildscript {
+  ext.getExtOrDefault = { prop, defaultValue ->
+    return rootProject.ext.has(prop) ? rootProject.ext.get(prop) : defaultValue
+  }
+
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath "com.android.tools.build:gradle:8.7.2"
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21"
+  }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+def getExtOrIntegerDefault(name, defaultValue) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : defaultValue
+}
+
+android {
+  namespace "com.fprot"
+  compileSdkVersion getExtOrIntegerDefault("compileSdkVersion", 35)
+
+  defaultConfig {
+    minSdkVersion getExtOrIntegerDefault("minSdkVersion", 24)
+    targetSdkVersion getExtOrIntegerDefault("targetSdkVersion", 35)
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+
+  sourceSets {
+    main {
+      java.srcDirs = ["src/main/java"]
+    }
+  }
+}
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+  implementation "org.jetbrains.kotlin:kotlin-stdlib"
+}

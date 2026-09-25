@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>@harbouli/fprot — P2P Encrypted TCP Protocol & API Documentation</title>
+  <meta name="description" content="Official technical specification, interactive protocol inspector, and complete API & utility reference for @harbouli/fprot." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root[data-theme="dark"] {
+      --bg: #07090e;
+      --bg-subtle: #0c1017;
+      --bg-surface: #111622;
+      --bg-surface-hover: #161d2c;
+      --bg-glass: rgba(12, 16, 23, 0.82);
+      --bg-code: #05070b;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.15);
+      --text: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-tertiary: #64748b;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.14);
+      --emerald: #10b981;
+      --emerald-bg: rgba(16, 185, 129, 0.12);
+      --amber: #f59e0b;
+      --amber-bg: rgba(245, 158, 11, 0.12);
+      --violet: #a855f7;
+      --violet-bg: rgba(168, 85, 247, 0.12);
+      --rose: #f43f5e;
+      --rose-bg: rgba(244, 63, 94, 0.12);
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+    :root[data-theme="light"] {
+      --bg: #ffffff;
+      --bg-subtle: #f8fafc;
+      --bg-surface: #f1f5f9;
+      --bg-surface-hover: #e2e8f0;
+      --bg-glass: rgba(255, 255, 255, 0.88);
+      --bg-code: #0f172a;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text: #0f172a;
+      --text-secondary: #475569;
+      --text-tertiary: #64748b;
+      --accent: #0284c7;
+      --accent-glow: rgba(2, 132, 199, 0.08);
+      --emerald: #059669;
+      --emerald-bg: rgba(5, 150, 105, 0.1);
+      --amber: #d97706;
+      --amber-bg: rgba(217, 119, 6, 0.1);
+      --violet: #7e22ce;
+      --violet-bg: rgba(126, 34, 206, 0.1);
+      --rose: #e11d48;
+      --rose-bg: rgba(225, 29, 72, 0.1);
+      --shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; font-size: 15px; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(ellipse 80% 50% at 50% -15%, var(--accent-glow), transparent),
+        linear-gradient(to right, rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+      color: var(--text);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Top Navigation Bar */
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      z-index: 100;
+    }
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .logo-mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #38bdf8 0%, #6366f1 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 13px;
+      color: #fff;
+      box-shadow: 0 2px 10px rgba(56, 189, 248, 0.35);
+    }
+    .logo-name {
+      font-weight: 700;
+      font-size: 15.5px;
+      letter-spacing: -0.02em;
+    }
+    .version-chip {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-glow);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 2px 8px;
+      border-radius: 999px;
+    }
+
+    .top-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .top-tab {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 500;
+      padding: 7px 13px;
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .top-tab:hover {
+      color: var(--text);
+      background: var(--bg-surface);
+    }
+    .top-tab.active {
+      color: var(--accent);
+      background: var(--accent-glow);
+      font-weight: 600;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .search-trigger {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      min-width: 210px;
+      justify-content: space-between;
+      transition: border-color 0.15s;
+    }
+    .search-trigger:hover {
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+    .kbd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--text-tertiary);
+    }
+    .icon-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      height: 34px;
+      padding: 0 11px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .icon-btn:hover {
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    /* Layout Grid */
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr) 230px;
+      max-width: 1520px;
+      margin: 0 auto;
+      padding-top: 60px;
+    }
+
+    /* Left Sidebar */
+    .sidebar {
+      position: sticky;
+      top: 60px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      border-right: 1px solid var(--border);
+      padding: 24px 16px 48px;
+      background: var(--bg-subtle);
+    }
+    .sidebar::-webkit-scrollbar { width: 5px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+
+    .sidebar-filter {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 11px;
+      border-radius: 7px;
+      font-size: 12.5px;
+      margin-bottom: 18px;
+      outline: none;
+    }
+    .sidebar-filter:focus {
+      border-color: var(--accent);
+    }
+    .sidebar-section {
+      margin-bottom: 22px;
+    }
+    .sidebar-heading {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-tertiary);
+      padding: 0 10px;
+      margin-bottom: 6px;
+    }
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 10px;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', monospace;
+      transition: all 0.12s ease;
+      cursor: pointer;
+    }
+    .sidebar-item.prose {
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+    }
+    .sidebar-item:hover {
+      background: var(--bg-surface);
+      color: var(--text);
+    }
+    .sidebar-item.active {
+      background: var(--accent-glow);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-class { background: var(--accent-glow); color: var(--accent); }
+    .badge-fn { background: var(--emerald-bg); color: var(--emerald); }
+    .badge-const { background: var(--amber-bg); color: var(--amber); }
+    .badge-type { background: var(--violet-bg); color: var(--violet); }
+    .badge-guide { background: var(--rose-bg); color: var(--rose); }
+
+    /* Center Content Area */
+    .content {
+      padding: 44px 56px 96px;
+      min-width: 0;
+    }
+    .page-view {
+      display: none;
+      animation: fadeIn 0.18s ease;
+    }
+    .page-view.active {
+      display: block;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Right TOC */
+    .toc {
+      position: sticky;
+      top: 60px;
+      height: calc(100vh - 60px);
+      overflow-y: auto;
+      padding: 36px 20px;
+      border-left: 1px solid var(--border);
+    }
+    .toc-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-tertiary);
+      margin-bottom: 12px;
+    }
+    .toc-link {
+      display: block;
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      padding: 4px 0;
+      transition: color 0.15s;
+    }
+    .toc-link:hover {
+      color: var(--accent);
+    }
+
+    /* Hero Banner */
+    .hero-card {
+      position: relative;
+      background: linear-gradient(160deg, var(--bg-surface) 0%, var(--bg-subtle) 100%);
+      border: 1px solid var(--border-strong);
+      border-radius: 16px;
+      padding: 36px 40px;
+      margin-bottom: 36px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .hero-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--emerald);
+      background: var(--emerald-bg);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 14px;
+      font-weight: 600;
+    }
+    .hero-card h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      margin-bottom: 12px;
+    }
+    .hero-card p {
+      color: var(--text-secondary);
+      font-size: 15.5px;
+      max-width: 720px;
+      margin-bottom: 24px;
+    }
+    .install-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-code);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #e2e8f0;
+      max-width: 560px;
+    }
+    .install-bar span.prompt {
+      color: var(--accent);
+      margin-right: 10px;
+      user-select: none;
+    }
+
+    /* Feature Metrics Row */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 40px;
+    }
+    .metric-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+    .metric-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .metric-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Interactive Wire Inspector */
+    .inspector {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      overflow: hidden;
+      margin: 28px 0 38px;
+    }
+    .inspector-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      background: var(--bg-subtle);
+      border-bottom: 1px solid var(--border);
+    }
+    .inspector-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-secondary);
+    }
+    .stage-buttons {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .stage-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 5px 11px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .stage-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #05070b;
+    }
+    .inspector-body {
+      padding: 20px;
+    }
+
+    /* Typography & API Blocks */
+    h2 {
+      font-size: 23px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 44px 0 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    h3 {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 24px 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    p { margin-bottom: 14px; color: var(--text-secondary); }
+    p strong { color: var(--text); font-weight: 600; }
+    ul, ol { margin: 0 0 18px 20px; color: var(--text-secondary); }
+    li { margin-bottom: 7px; }
+    li strong { color: var(--text); }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88em;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      padding: 1.5px 6px;
+      border-radius: 5px;
+      color: var(--text);
+    }
+    pre {
+      background: var(--bg-code);
+      border: 1px solid var(--border-strong);
+      border-radius: 11px;
+      padding: 18px 20px;
+      overflow-x: auto;
+      margin: 14px 0 22px;
+      position: relative;
+    }
+    pre code {
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: #e2e8f0;
+      font-size: 12.8px;
+      line-height: 1.6;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: #94a3b8;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .copy-btn:hover {
+      background: rgba(56, 189, 248, 0.2);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    /* API Cards */
+    .api-block {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 22px 24px;
+      margin-bottom: 20px;
+      transition: border-color 0.15s;
+    }
+    .api-block:hover {
+      border-color: var(--border-strong);
+    }
+    .api-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .api-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .api-source {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--text-tertiary);
+    }
+    .sig-box {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.8px;
+      background: var(--bg-code);
+      color: #38bdf8;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      padding: 11px 14px;
+      border-radius: 8px;
+      margin: 10px 0 14px;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--text-tertiary);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    td { color: var(--text-secondary); }
+    td code { font-size: 12px; }
+
+    .mermaid-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 20px 0 28px;
+      overflow-x: auto;
+    }
+
+    @media (max-width: 1200px) {
+      .layout { grid-template-columns: 260px minmax(0, 1fr); }
+      .toc { display: none; }
+    }
+    @media (max-width: 860px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--border); }
+      .content { padding: 28px 20px 64px; }
+      .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+      .top-tabs { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="#overview" class="logo" onclick="switchTab('overview')">
+        <div class="logo-mark">fp</div>
+        <span class="logo-name">@harbouli/fprot</span>
+        <span class="version-chip">v1.1.0</span>
+      </a>
+
+      <nav class="top-tabs">
+        <button class="top-tab active" data-tab="overview" onclick="switchTab('overview')">Overview &amp; API</button>
+        <button class="top-tab" data-tab="signaling" onclick="switchTab('signaling')">Signaling Deep Dive</button>
+        <button class="top-tab" data-tab="reliability" onclick="switchTab('reliability')">Reliability &amp; ARQ</button>
+        <button class="top-tab" data-tab="crypto" onclick="switchTab('crypto')">Cryptography &amp; Wire</button>
+        <button class="top-tab" data-tab="backends" onclick="switchTab('backends')">Custom Backends</button>
+      </nav>
+    </div>
+
+    <div class="topbar-right">
+      <div class="search-trigger" onclick="document.getElementById('sidebarSearch').focus()">
+        <span>Search 36 exports &amp; guides...</span>
+        <span class="kbd">/</span>
+      </div>
+      <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">
+        <span id="themeIcon">☀️</span>
+      </button>
+      <a class="icon-btn" href="https://www.npmjs.com/package/@harbouli/fprot" target="_blank" rel="noopener">npm</a>
+      <a class="icon-btn" href="https://github.com/harbouli/fprot" target="_blank" rel="noopener">GitHub &nearr;</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- Left Sidebar Navigation -->
+    <aside class="sidebar">
+      <input type="text" id="sidebarSearch" class="sidebar-filter" placeholder="Filter classes, functions, types..." />
+
+      <div class="sidebar-section">
+        <div class="sidebar-heading">Documentation Chapters</div>
+        <a class="sidebar-item prose active" data-tab-link="overview" onclick="switchTab('overview')">
+          <span>1. Overview &amp; All Exports</span><span class="badge badge-guide">Core</span>
+        </a>
+        <a class="sidebar-item prose" data-tab-link="signaling" onclick="switchTab('signaling')">
+          <span>2. Signaling Deep Dive</span><span class="badge badge-guide">Spec</span>
+        </a>
+        <a class="sidebar-item prose" data-tab-link="reliability" onclick="switchTab('reliability')">
+          <span>3. Reliability &amp; Storage</span><span class="badge badge-guide">Spec</span>
+        </a>
+        <a class="sidebar-item prose" data-tab-link="crypto" onclick="switchTab('crypto')">
+          <span>4. Crypto &amp; Wire Protocol</span><span class="badge badge-guide">Spec</span>
+        </a>
+        <a class="sidebar-item prose" data-tab-link="backends" onclick="switchTab('backends')">
+          <span>5. Custom Backend Guide</span><span class="badge badge-guide">Code</span>
+        </a>
+      </div>
+
+      <div class="sidebar-section" id="apiNavList">
+        <div class="sidebar-heading">Core Classes &amp; Transports</div>
+        <a href="#ReliableConversation" class="sidebar-item" onclick="jumpToApi('ReliableConversation')"><span>ReliableConversation</span><span class="badge badge-class">Class</span></a>
+        <a href="#P2PTcpPeer" class="sidebar-item" onclick="jumpToApi('P2PTcpPeer')"><span>P2PTcpPeer</span><span class="badge badge-class">Class</span></a>
+        <a href="#WebSocketSignaling" class="sidebar-item" onclick="jumpToApi('WebSocketSignaling')"><span>WebSocketSignaling</span><span class="badge badge-class">Class</span></a>
+        <a href="#MessageStore" class="sidebar-item" onclick="jumpToApi('MessageStore')"><span>MessageStore</span><span class="badge badge-class">Class</span></a>
+        <a href="#LineDecoder" class="sidebar-item" onclick="jumpToApi('LineDecoder')"><span>LineDecoder</span><span class="badge badge-class">Class</span></a>
+        <a href="#EventBus" class="sidebar-item" onclick="jumpToApi('EventBus')"><span>EventBus</span><span class="badge badge-class">Class</span></a>
+        <a href="#TcpSocket" class="sidebar-item" onclick="jumpToApi('TcpSocket')"><span>TcpSocket</span><span class="badge badge-class">Obj</span></a>
+
+        <div class="sidebar-heading" style="margin-top: 16px;">Identity &amp; Storage Utils</div>
+        <a href="#loadOrCreateIdentity" class="sidebar-item" onclick="jumpToApi('loadOrCreateIdentity')"><span>loadOrCreateIdentity</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#validatePublicKey" class="sidebar-item" onclick="jumpToApi('validatePublicKey')"><span>validatePublicKey</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#validateIdentity" class="sidebar-item" onclick="jumpToApi('validateIdentity')"><span>validateIdentity</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#sign" class="sidebar-item" onclick="jumpToApi('sign')"><span>sign / verify</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#conversationStorageKey" class="sidebar-item" onclick="jumpToApi('conversationStorageKey')"><span>conversationStorageKey</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#createEncryptedStorage" class="sidebar-item" onclick="jumpToApi('createEncryptedStorage')"><span>createEncryptedStorage</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#validatePayload" class="sidebar-item" onclick="jumpToApi('validatePayload')"><span>validatePayload</span><span class="badge badge-fn">Fn</span></a>
+
+        <div class="sidebar-heading" style="margin-top: 16px;">Session &amp; Native Crypto</div>
+        <a href="#createSessionKeys" class="sidebar-item" onclick="jumpToApi('createSessionKeys')"><span>createSessionKeys</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#exportPublicKey" class="sidebar-item" onclick="jumpToApi('exportPublicKey')"><span>export / importPublicKey</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#encryptJson" class="sidebar-item" onclick="jumpToApi('encryptJson')"><span>encryptJson / decryptJson</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#randomId" class="sidebar-item" onclick="jumpToApi('randomId')"><span>randomId</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#toBase64Url" class="sidebar-item" onclick="jumpToApi('toBase64Url')"><span>toBase64Url / fromBase64Url</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#randomBytes" class="sidebar-item" onclick="jumpToApi('randomBytes')"><span>randomBytes / sha256</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#boxKeypair" class="sidebar-item" onclick="jumpToApi('boxKeypair')"><span>boxKeypair / Seal / Open</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#signKeypair" class="sidebar-item" onclick="jumpToApi('signKeypair')"><span>signKeypair / Detached</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#secretboxKeygen" class="sidebar-item" onclick="jumpToApi('secretboxKeygen')"><span>secretboxKeygen / Seal / Open</span><span class="badge badge-fn">Fn</span></a>
+
+        <div class="sidebar-heading" style="margin-top: 16px;">Signaling &amp; Constants</div>
+        <a href="#encodeSignal" class="sidebar-item" onclick="jumpToApi('encodeSignal')"><span>encodeSignal / decodeSignal</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#encodePeerSignal" class="sidebar-item" onclick="jumpToApi('encodePeerSignal')"><span>encode / decodePeerSignal</span><span class="badge badge-fn">Fn</span></a>
+        <a href="#constants" class="sidebar-item" onclick="jumpToApi('constants')"><span>Constants &amp; TS Types</span><span class="badge badge-const">Types</span></a>
+      </div>
+    </aside>
+
+    <!-- Main Center Column -->
+    <main class="content">
+
+      <!-- ==================== TAB 1: OVERVIEW & COMPLETE API ==================== -->
+      <div class="page-view active" id="view-overview">
+        <div class="hero-card">
+          <div class="hero-eyebrow">● Built-In Native Swift &amp; Kotlin Crypto + TCP Engine</div>
+          <h1>Peer-to-Peer Encrypted TCP Messaging for React Native</h1>
+          <p>
+            <code>@harbouli/fprot</code> uses WebRTC exclusively as a temporary handshake channel to discover peers and exchange ephemeral X25519 keys. Once authenticated over a direct raw TCP socket, WebRTC is closed and 100% of application traffic travels over end-to-end encrypted TCP.
+          </p>
+          <div class="install-bar">
+            <div><span class="prompt">$</span>npm install @harbouli/fprot react-native-webrtc</div>
+            <button class="copy-btn" style="position:static;" onclick="copyText('npm install @harbouli/fprot react-native-webrtc', this)">Copy</button>
+          </div>
+        </div>
+
+        <div class="metrics-grid">
+          <div class="metric-box">
+            <div class="metric-value">Ed25519 + X25519</div>
+            <div class="metric-label">Pinned Identity &amp; Ephemeral PFS Session Keys</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value">0 Bytes</div>
+            <div class="metric-label">Chat Payload Exposed to Signaling Server</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value">Stop-and-Wait ARQ</div>
+            <div class="metric-label">Write-Ahead Journal &amp; Idempotent ACKs</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-value">36 Exports</div>
+            <div class="metric-label">100% of Internal Utilities Exported</div>
+          </div>
+        </div>
+
+        <!-- Interactive Protocol Stage Explorer -->
+        <div class="inspector">
+          <div class="inspector-header">
+            <span class="inspector-title">Interactive Wire Protocol Inspector</span>
+            <div class="stage-buttons">
+              <button class="stage-btn active" onclick="showStage(1, this)">Stage 1: Signed Broker Signal</button>
+              <button class="stage-btn" onclick="showStage(2, this)">Stage 2: WebRTC Control Channel</button>
+              <button class="stage-btn" onclick="showStage(3, this)">Stage 3: Encrypted TCP Frame</button>
+            </div>
+          </div>
+          <div class="inspector-body" id="stageContent">
+            <p style="margin-bottom:8px;"><strong>Stage 1 — Out-of-Band Signed Signal Envelope (<code>SignalProtocol.ts</code>):</strong></p>
+            <pre style="margin:0;"><code>{
+  "body": "{\"v\":1,\"conversationId\":\"room-1\",\"from\":\"Ed25519_Pub_A\",\"to\":\"Ed25519_Pub_B\",\"type\":\"offer\",\"challenge\":\"Ch_16CharBase64\",\"attempt\":\"At_16CharBase64\",\"sdp\":\"...\"}",
+  "signature": "Ed25519_Detached_Signature_Over_fprot.signaling.v1:body"
+}</code></pre>
+          </div>
+        </div>
+
+        <h2 id="exports-tree">Complete Root Package Exports</h2>
+        <p>Every class, cryptographic primitive, storage journal, signaling codec, stream framer, constant, and TypeScript type is exported directly from <code>@harbouli/fprot</code>:</p>
+        <pre><code>import {
+  // Core Classes &amp; Transports
+  ReliableConversation, P2PTcpPeer, WebSocketSignaling,
+  MessageStore, LineDecoder, EventBus, TcpSocket,
+
+  // Ed25519 Identity, Signatures &amp; Encrypted At-Rest Storage
+  loadOrCreateIdentity, validatePublicKey, validateIdentity,
+  sign, verify, conversationStorageKey, createEncryptedStorage, validatePayload,
+
+  // Ephemeral X25519 Session Keys &amp; JSON Frame Encryption
+  createSessionKeys, exportPublicKey, importPublicKey,
+  encryptJson, decryptJson, randomId,
+
+  // Cross-Platform Native Crypto Primitives &amp; Base64URL
+  toBase64Url, fromBase64Url, randomBytes, sha256,
+  boxKeypair, boxSeal, boxOpen,
+  signKeypair, signDetached, verifyDetached,
+  secretboxKeygen, secretboxSeal, secretboxOpen,
+
+  // Signaling Protocol Codecs &amp; Constants
+  encodeSignal, decodeSignal, encodeReliableSignal, decodeReliableSignal,
+  encodePeerSignal, decodePeerSignal, encodeSdpSignal, decodeSdpSignal,
+  MAX_MESSAGE_BYTES, MAX_MESSAGES, SIGNAL_VERSION, NONCE_BYTES,
+} from '@harbouli/fprot';</code></pre>
+
+        <h2 id="core-classes-section">Core Classes &amp; Transports</h2>
+
+        <div class="api-block" id="ReliableConversation">
+          <div class="api-header">
+            <span class="api-name">ReliableConversation</span>
+            <span class="badge badge-class">Class &bull; src/reliable/ReliableConversation.ts</span>
+          </div>
+          <p>Immortal conversation supervisor that spawns disposable <code>P2PTcpPeer</code> instances across generations, persists outgoing messages in <code>MessageStore</code> before wire transmission, enforces Stop-and-Wait ARQ delivery receipts (<code>inFlight</code>), runs encrypted 10s heartbeats, and auto-reconnects with jittered exponential backoff.</p>
+          <div class="sig-box">new ReliableConversation(options: ReliableConversationOptions)</div>
+          <table>
+            <thead><tr><th>Member</th><th>Signature</th><th>Behavior</th></tr></thead>
+            <tbody>
+              <tr><td><code>state</code></td><td><code>ConversationState</code></td><td><code>'stopped' | 'offline' | 'reconnecting' | 'connecting' | 'connected'</code></td></tr>
+              <tr><td><code>messages</code></td><td><code>ChatMessage[]</code></td><td>Deep-cloned array of all stored incoming and outgoing messages.</td></tr>
+              <tr><td><code>start()</code></td><td><code>Promise&lt;void&gt;</code></td><td>Validates Ed25519 keys, loads <code>MessageStore</code> from disk, starts <code>signaling</code>, and triggers peer discovery.</td></tr>
+              <tr><td><code>sendMessage(payload)</code></td><td><code>Promise&lt;string&gt;</code></td><td>Validates JSON purity (&le; 2,730 chars), commits to encrypted disk as <code>'pending'</code>, updates UI listeners, and flushes over TCP.</td></tr>
+              <tr><td><code>setAvailable(bool)</code></td><td><code>void</code></td><td>Connects OS foreground/background and network state. Passing <code>true</code> resets retry count to <code>0</code> and discovers immediately.</td></tr>
+              <tr><td><code>reconnect()</code></td><td><code>void</code></td><td>Drops current TCP peer and re-runs discovery with fresh <code>getHostOptions()</code> (use on Wi-Fi IP changes).</td></tr>
+              <tr><td><code>stop()</code></td><td><code>void</code></td><td>Stops signaling, destroys active peer, clears timers, and enters <code>'stopped'</code>.</td></tr>
+              <tr><td><code>on(event, cb)</code></td><td><code>Unsubscribe</code></td><td>Subscribes to <code>'state'</code>, <code>'messages'</code>, or <code>'error'</code> events.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="api-block" id="P2PTcpPeer">
+          <div class="api-header">
+            <span class="api-name">P2PTcpPeer</span>
+            <span class="badge badge-class">Class &bull; src/P2PTcpPeer.ts</span>
+          </div>
+          <p>Single-session peer-to-peer transport. Gathers non-trickle WebRTC ICE candidates, exchanges ephemeral 32-byte X25519 public keys and the Host's TCP endpoint over an ordered WebRTC data channel (<code>p2p-tcp-control</code>), verifies a mutual encrypted TCP <code>ready</code> frame (<code>seq: 1</code>), and immediately closes WebRTC and the TCP listener.</p>
+          <div class="sig-box">new P2PTcpPeer(options?: P2PTcpPeerOptions)</div>
+          <table>
+            <thead><tr><th>Member</th><th>Signature</th><th>Behavior</th></tr></thead>
+            <tbody>
+              <tr><td><code>createOffer(host)</code></td><td><code>Promise&lt;string&gt;</code></td><td>Starts TCP listener on <code>host.listenHost</code>/<code>port</code>, creates X25519 keys, gathers ICE candidates, and returns encoded offer.</td></tr>
+              <tr><td><code>acceptOffer(offer)</code></td><td><code>Promise&lt;string&gt;</code></td><td>Applies remote offer SDP, creates X25519 keys, gathers ICE candidates, and returns encoded answer.</td></tr>
+              <tr><td><code>acceptAnswer(answer)</code></td><td><code>Promise&lt;void&gt;</code></td><td>Applies Guest answer SDP on the Host; triggers control channel handshake and TCP connection.</td></tr>
+              <tr><td><code>sendMessage(payload)</code></td><td><code>string</code></td><td>Encrypts payload with next monotonic <code>txSequence</code> and writes newline-delimited frame to TCP socket.</td></tr>
+              <tr><td><code>close()</code></td><td><code>void</code></td><td>Closes TCP socket, server, and WebRTC, and zeroes ephemeral private key in memory (<code>privateKey.fill(0)</code>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="api-block" id="WebSocketSignaling">
+          <div class="api-header">
+            <span class="api-name">WebSocketSignaling</span>
+            <span class="badge badge-class">Class &bull; src/reliable/WebSocketSignaling.ts</span>
+          </div>
+          <p>Auto-reconnecting WebSocket transport for <code>server/signaling.mjs</code> performing 2-factor authentication (shared 32+ char token + Ed25519 signature over <code>fprot.broker.v1:${nonce}</code>).</p>
+          <div class="sig-box">new WebSocketSignaling(options: WebSocketSignalingOptions)</div>
+        </div>
+
+        <div class="api-block" id="MessageStore">
+          <div class="api-header">
+            <span class="api-name">MessageStore</span>
+            <span class="badge badge-class">Class &bull; src/reliable/MessageStore.ts</span>
+          </div>
+          <p>Single-writer write-ahead persistent journal. Commits snapshots to <code>KeyValueStorage</code> <em>before</em> mutating in-memory rows. Provides <code>load()</code>, <code>snapshot()</code>, <code>pending()</code>, idempotent <code>add(message)</code>, and <code>acknowledge(id)</code>.</p>
+          <div class="sig-box">new MessageStore(storage: KeyValueStorage, key: string)</div>
+        </div>
+
+        <div class="api-block" id="LineDecoder">
+          <div class="api-header">
+            <span class="api-name">LineDecoder</span>
+            <span class="badge badge-class">Class &bull; src/internal/LineDecoder.ts</span>
+          </div>
+          <p>Newline-delimited (<code>\n</code>) TCP stream framer that enforces <code>maxBytes</code> before splitting to prevent memory exhaustion attacks.</p>
+          <div class="sig-box">new LineDecoder(maxBytes: number) // decoder.push(chunk: string): string[]</div>
+        </div>
+
+        <div class="api-block" id="EventBus">
+          <div class="api-header">
+            <span class="api-name">EventBus&lt;Events&gt;</span>
+            <span class="badge badge-class">Class &bull; src/internal/EventBus.ts</span>
+          </div>
+          <p>Generic type-safe event emitter with <code>on(event, listener): Unsubscribe</code>, <code>emit(event, value): void</code>, and <code>clear(): void</code>.</p>
+        </div>
+
+        <div class="api-block" id="TcpSocket">
+          <div class="api-header">
+            <span class="api-name">TcpSocket</span>
+            <span class="badge badge-class">Object &bull; src/internal/tcp.ts</span>
+          </div>
+          <p>Cross-platform TCP Server &amp; Client bridge routing through built-in Swift/Kotlin <code>FprotNative</code> sockets on iOS/Android and <code>node:net</code> in Node/Jest tests.</p>
+          <div class="sig-box">TcpSocket.createServer(onConnect): TcpSocketServer
+TcpSocket.createConnection(options, onConnect?): TcpSocketConnection</div>
+        </div>
+
+        <h2 id="identity-utils-section">Identity, Signature &amp; Storage Utilities</h2>
+
+        <div class="api-block" id="loadOrCreateIdentity">
+          <div class="api-header"><span class="api-name">loadOrCreateIdentity</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">loadOrCreateIdentity(secureStorage: KeyValueStorage): Promise&lt;PeerIdentity&gt;</div>
+          <p>Loads existing Ed25519 keypair from <code>secureStorage.getItem('fprot.identity.v1')</code>, verifies it with a live signature self-check, or creates and saves a new 32B/64B Ed25519 identity keypair.</p>
+        </div>
+
+        <div class="api-block" id="validatePublicKey">
+          <div class="api-header"><span class="api-name">validatePublicKey &amp; validateIdentity</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">validatePublicKey(key: string): void
+validateIdentity(identity: PeerIdentity): void</div>
+          <p>Verifies canonical 32-byte base64url Ed25519 public keys and 64-byte private keys with a live sign/verify round-trip check over <code>'fprot.identity.check'</code>.</p>
+        </div>
+
+        <div class="api-block" id="sign">
+          <div class="api-header"><span class="api-name">sign &amp; verify</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">sign(body: string, identity: PeerIdentity): string
+verify(body: string, signature: string, publicKey: string): boolean</div>
+          <p>Detached Ed25519 signing and boolean signature verification over UTF-8 strings.</p>
+        </div>
+
+        <div class="api-block" id="conversationStorageKey">
+          <div class="api-header"><span class="api-name">conversationStorageKey</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">conversationStorageKey(id: string, local: string, remote: string): string</div>
+          <p>Computes <code>fprot.chat.&lt;base64url_sha256&gt;</code> over <code>JSON.stringify([id, local, remote])</code> to isolate storage records per conversation pair.</p>
+        </div>
+
+        <div class="api-block" id="createEncryptedStorage">
+          <div class="api-header"><span class="api-name">createEncryptedStorage &amp; validatePayload</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">createEncryptedStorage(storage: KeyValueStorage, secureStorage: KeyValueStorage): Promise&lt;KeyValueStorage&gt;
+validatePayload(payload: unknown): asserts payload is JsonValue</div>
+          <p><code>createEncryptedStorage</code> wraps any storage backend with AEAD encryption (storing the 256-bit master key in <code>secureStorage</code> under <code>fprot.storage-key.v1</code>) and binds the record key <code>name</code> inside the authenticated plaintext. <code>validatePayload</code> enforces strict JSON purity (&le; 2,730 chars, rejecting <code>undefined</code>, <code>NaN</code>, <code>Infinity</code>, functions, and symbols).</p>
+        </div>
+
+        <h2 id="crypto-utils-section">Session &amp; Native Cryptographic Utilities</h2>
+
+        <div class="api-block" id="createSessionKeys">
+          <div class="api-header"><span class="api-name">createSessionKeys, exportPublicKey &amp; importPublicKey</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">createSessionKeys(): Promise&lt;SessionKeys&gt;
+exportPublicKey(key: Uint8Array): string
+importPublicKey(key: string): Uint8Array</div>
+          <p>Generates ephemeral 32-byte X25519 keypairs and converts binary <code>Uint8Array</code> buffers to/from unpadded Base64URL.</p>
+        </div>
+
+        <div class="api-block" id="encryptJson">
+          <div class="api-header"><span class="api-name">encryptJson, decryptJson &amp; randomId</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">encryptJson(value: unknown, remotePublicKey: Uint8Array, localPrivateKey: Uint8Array): EncryptedFrame
+decryptJson&lt;T&gt;(frame: EncryptedFrame, remotePublicKey: Uint8Array, localPrivateKey: Uint8Array): T
+randomId(): string</div>
+          <p>Encrypts and authenticates JSON values into <code>{ v: 1, nonce, ciphertext }</code> frames and generates 16-character (96-bit entropy) Base64URL IDs.</p>
+        </div>
+
+        <div class="api-block" id="toBase64Url">
+          <div class="api-header"><span class="api-name">toBase64Url, fromBase64Url, randomBytes &amp; sha256</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">toBase64Url(bytes: Uint8Array): string
+fromBase64Url(str: string): Uint8Array
+randomBytes(size: number): Uint8Array
+sha256(utf8Input: string): Uint8Array</div>
+          <p>Low-level RFC 4648 §5 Base64URL codec, CSPRNG byte generator, and SHA-256 hash primitive.</p>
+        </div>
+
+        <div class="api-block" id="boxKeypair">
+          <div class="api-header"><span class="api-name">boxKeypair / boxSeal / boxOpen / signKeypair / secretboxKeygen</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">boxKeypair(): { publicKey: Uint8Array; privateKey: Uint8Array }
+boxSeal(plaintextUtf8: string, nonce12: Uint8Array, remotePub32: Uint8Array, localPriv32: Uint8Array): Uint8Array
+boxOpen(ciphertextWithTag: Uint8Array, nonce12: Uint8Array, remotePub32: Uint8Array, localPriv32: Uint8Array): string
+signKeypair() / signDetached(msg, secretKey64) / verifyDetached(msg, sig64, pub32)
+secretboxKeygen() / secretboxSeal(plain, nonce12, key32) / secretboxOpen(cipher, nonce12, key32)</div>
+          <p>Direct access to the cross-platform X25519 ECDH + AES-256-GCM / ChaCha20-Poly1305 and Ed25519 native cryptographic primitives.</p>
+        </div>
+
+        <div class="api-block" id="encodeSignal">
+          <div class="api-header"><span class="api-name">encodeSignal, decodeSignal, encodePeerSignal &amp; decodePeerSignal</span><span class="badge badge-fn">Function</span></div>
+          <div class="sig-box">encodeSignal(signal: Signal, identity: PeerIdentity): string
+decodeSignal(raw: string, localKey: string, remoteKey: string, conversationId: string): Signal
+encodePeerSignal(type: 'offer' | 'answer', sdp: string): string
+decodePeerSignal(input: string, expectedType: 'offer' | 'answer'): SignalEnvelope</div>
+          <p>Reliable Ed25519-signed signaling codec (<code>fprot.signaling.v1:</code>) and low-level WebRTC SDP offer/answer codec.</p>
+        </div>
+
+        <div class="api-block" id="constants">
+          <div class="api-header"><span class="api-name">Exported Constants</span><span class="badge badge-const">Constants</span></div>
+          <table>
+            <thead><tr><th>Constant</th><th>Value</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td><code>MAX_MESSAGE_BYTES</code></td><td><code>16384</code></td><td>Base size constant (<code>MAX_MESSAGE_BYTES / 6 = 2730</code> max serialized chars per chat message).</td></tr>
+              <tr><td><code>MAX_MESSAGES</code></td><td><code>2000</code></td><td>Maximum messages stored per conversation in <code>MessageStore</code>.</td></tr>
+              <tr><td><code>SIGNAL_VERSION</code></td><td><code>1</code></td><td>Version number for <code>SignalEnvelope</code> payloads.</td></tr>
+              <tr><td><code>NONCE_BYTES</code></td><td><code>12</code></td><td>Nonce byte length for <code>boxSeal</code> and <code>secretboxSeal</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ==================== TAB 2: SIGNALING DEEP DIVE ==================== -->
+      <div class="page-view" id="view-signaling">
+        <div class="hero-card">
+          <div class="hero-eyebrow">Part 2 &bull; Architecture Deep Dive</div>
+          <h1>What is Signaling &amp; How Connection Setup Works</h1>
+          <p>How two mobile devices solve the P2P Bootstrap Paradox using Ed25519-signed envelopes, anti-replay challenge/attempt nonces, and an ephemeral WebRTC control channel that self-destructs once TCP connects.</p>
+        </div>
+
+        <h2>1. The P2P Bootstrap Paradox</h2>
+        <p>Two mobile phones cannot open a direct TCP socket without prior coordination because:</p>
+        <ul>
+          <li><strong>Dynamic IP Addresses &amp; Ephemeral Ports:</strong> Mobile IPs change on every Wi-Fi/Cellular switch, and the Host binds a temporary free OS port (<code>port: 0</code>) per attempt.</li>
+          <li><strong>Asynchronous Availability:</strong> Device A and Device B may launch the app at different times and need a lightweight rendezvous signal (<code>wake</code> / <code>request</code>).</li>
+          <li><strong>Pre-TCP Session Key Exchange:</strong> Both devices must exchange ephemeral 32-byte X25519 public keys <em>before</em> opening the TCP socket so the very first TCP frame (<code>seq: 1</code>) is already encrypted.</li>
+        </ul>
+
+        <h2>2. Two-Stage Handshake &amp; Challenge-Attempt State Machine</h2>
+        <div class="mermaid-card">
+          <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant H as Host (ReliableConversation)
+    participant S as Signaling Broker
+    participant G as Guest (ReliableConversation)
+
+    H->>S: Signal wake (signed by Host Ed25519)
+    S->>G: Forward wake
+    Note over G: Generates 16-char challenge ID (reused if wake repeats)
+    G->>S: Signal request (challenge, signed by Guest Ed25519)
+    S->>H: Forward request
+    Note over H: Saves challenge, generates 16-char attempt ID, opens TCP listener
+    H->>S: Signal offer (challenge, attempt, sdp, signed by Host Ed25519)
+    S->>G: Forward offer
+    Note over G: Verifies signal.challenge == this.challenge, accepts Offer SDP
+    G->>S: Signal answer (challenge, attempt, sdp, signed by Guest Ed25519)
+    S->>H: Forward answer
+    Note over H: Verifies challenge and attempt match, calls peer.acceptAnswer
+          </div>
+        </div>
+
+        <h2>3. Why Repeated <code>wake</code> Signals Never Invalidate In-Flight Offers</h2>
+        <p>In <code>ReliableConversation.ts</code> (line 237), when the Guest receives a <code>wake</code> signal from the Host, it checks <code>if (!this.challenge) this.challenge = randomId()</code>. By reusing an outstanding <code>challenge</code> rather than overwriting it, a duplicate <code>wake</code> packet never invalidates an <code>offer</code> that the Host is currently gathering ICE candidates for.</p>
+
+        <h2>4. Reference Broker Hardening (<code>server/signaling.mjs</code>)</h2>
+        <table>
+          <thead><tr><th>Protection</th><th>Mechanism</th><th>Limit</th></tr></thead>
+          <tbody>
+            <tr><td><strong>2-Factor Auth</strong></td><td><code>crypto.timingSafeEqual</code> shared token + Ed25519 signature over <code>fprot.broker.v1:${nonce}</code></td><td>10s auth timeout</td></tr>
+            <tr><td><strong>Rate Limiting</strong></td><td>Per-socket fixed-window counter disconnects flooding clients with code <code>1008</code></td><td>120 msgs / 60s</td></tr>
+            <tr><td><strong>Frame Size Cap</strong></td><td><code>maxPayload</code> and <code>perMessageDeflate: false</code> prevent memory/zlib bombs</td><td>132 KB max</td></tr>
+            <tr><td><strong>Sender Pinning</strong></td><td>Enforces <code>JSON.parse(envelope.body).from === socket.publicKey</code></td><td>Strict match</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ==================== TAB 3: RELIABILITY & ARQ ==================== -->
+      <div class="page-view" id="view-reliability">
+        <div class="hero-card">
+          <div class="hero-eyebrow">Part 3 &bull; Resilience Engineering</div>
+          <h1>Reliability, Persistence &amp; Fault Tolerance</h1>
+          <p>How <code>ReliableConversation</code> and <code>MessageStore</code> guarantee zero message loss, strict FIFO ordering, and idempotent deduplication across network drops and app restarts.</p>
+        </div>
+
+        <h2>1. Immortal Supervisor vs. Disposable Peers</h2>
+        <p>Raw OS TCP sockets break whenever a mobile user switches between Wi-Fi and Cellular or backgrounds the app. <code>fprot</code> solves this by making <code>P2PTcpPeer</code> strictly single-use and disposable, while <code>ReliableConversation</code> acts as a persistent supervisor that spawns a fresh <code>P2PTcpPeer</code> with a new <code>++this.generation</code> counter on every reconnect.</p>
+        <p>Every async callback checks <code>this.current(peer, generation)</code> so late events from a dying socket can never corrupt the new connection.</p>
+
+        <h2>2. Write-Before-Memory Commit Pipeline (<code>MessageStore</code>)</h2>
+        <div class="mermaid-card">
+          <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant UI as React Native UI
+    participant RC as ReliableConversation
+    participant MS as MessageStore Journal
+    participant Disk as Encrypted AsyncStorage
+
+    UI->>RC: await chat.sendMessage(payload)
+    RC->>MS: await store.add(message with status pending)
+    MS->>Disk: setItem(encrypted snapshot v1)
+    Disk-->>MS: Write committed on disk
+    MS->>MS: Update in-memory rows array
+    MS-->>RC: Resolved
+    RC->>UI: Emit messages event (shows pending)
+    RC->>RC: flush() sets inFlight and transmits over TCP
+          </div>
+        </div>
+
+        <h2>3. Stop-and-Wait ARQ &amp; Lost-ACK Idempotent Deduplication</h2>
+        <ul>
+          <li><strong>Single In-Flight Lock (<code>this.inFlight</code>):</strong> Only the oldest <code>pending</code> outgoing message is transmitted at a time, guarded by a 10-second <code>ackTimer</code>.</li>
+          <li><strong>Lost-ACK Recovery:</strong> If Device B receives message <code>m1</code>, saves it to disk, and sends <code>{ kind: "ack", id: m1 }</code>, but the Wi-Fi drops before Device A receives the ACK, Device A will re-transmit <code>m1</code> on the next generation's TCP connection.</li>
+          <li><strong>Idempotent Receiver:</strong> Device B's <code>MessageStore.add()</code> detects that <code>incoming:m1</code> already exists with identical <code>sentAt</code> and <code>payload</code>, returns <code>false</code> (preventing duplicate UI entries), and <strong>re-transmits the <code>ack</code></strong> so Device A marks <code>m1</code> as <code>delivered</code>!</li>
+        </ul>
+
+        <h2>4. Glare Immunity &amp; Exponential Backoff with Jitter</h2>
+        <p>While <code>state === 'connected'</code>, <code>ReliableConversation</code> ignores all incoming signaling packets (<code>if (this.state === 'connected') return;</code>), relying solely on its encrypted TCP heartbeat (10s <code>ping</code>/<code>pong</code>, 35s <code>idleTimeoutMs</code>) to detect if the partner restarted.</p>
+      </div>
+
+      <!-- ==================== TAB 4: CRYPTOGRAPHY & WIRE ==================== -->
+      <div class="page-view" id="view-crypto">
+        <div class="hero-card">
+          <div class="hero-eyebrow">Part 4 &bull; Security &amp; Wire Specification</div>
+          <h1>Cryptographic Primitives &amp; Wire Framing</h1>
+          <p>Multi-layered defense combining pinned Ed25519 identities, ephemeral X25519 Diffie-Hellman session keys, 1-based monotonic sequence counters, and record-bound local storage encryption.</p>
+        </div>
+
+        <h2>1. Three-Layer TCP Packet Encapsulation</h2>
+        <pre><code>// Layer 1: Raw newline-delimited TCP line (EncryptedFrame)
+{"v":1,"nonce":"<Base64URL_Nonce>","ciphertext":"<AEAD_Ciphertext_With_16B_Tag>"}\n
+
+// Layer 2: Decrypted Session Payload (WirePayload in P2PTcpPeer.ts)
+{
+  "v": 2,
+  "sender": "host",       // Verified against expected opposite role to prevent reflection attacks
+  "seq": 2,               // Must equal this.rxSequence + 1 (strict anti-replay & anti-drop)
+  "kind": "message",
+  "message": {
+    "id": "xY9zA2bC5dE8fG1h",
+    "sentAt": 1780000000000,
+    // Layer 3: ReliableConversation Packet (fprot.chat.v1)
+    "payload": {
+      "protocol": "fprot.chat.v1",
+      "conversationId": "main-chat-room",
+      "kind": "message",  // "message" | "ack" | "ping" | "pong"
+      "id": "18c21a4f9b0d2e3c",
+      "payload": "Hello over direct encrypted TCP!",
+      "sentAt": 1780000000000
+    }
+  }
+}</code></pre>
+
+        <h2>2. Security Threat Defense Matrix</h2>
+        <table>
+          <thead><tr><th>Attack Vector</th><th>Defense in <code>@harbouli/fprot</code></th></tr></thead>
+          <tbody>
+            <tr><td><strong>Malicious Signaling Server (MITM)</strong></td><td>All SDP offers/answers are signed with Ed25519 (<code>fprot.signaling.v1:</code>) and verified against the pinned <code>remotePublicKey</code>.</td></tr>
+            <tr><td><strong>Cross-Protocol Signature Replay</strong></td><td>Strict domain separation prefixes: <code>fprot.broker.v1:</code> vs <code>fprot.signaling.v1:</code> vs <code>fprot.identity.check</code>.</td></tr>
+            <tr><td><strong>TCP Ciphertext Reflection</strong></td><td><code>WirePayload.sender</code> is authenticated inside the ciphertext and checked against <code>this.role === 'host' ? 'guest' : 'host'</code>.</td></tr>
+            <tr><td><strong>Unauthorized Port Scanning</strong></td><td>Host TCP server immediately destroys any socket connecting before WebRTC delivers <code>remotePublicKey</code>, and closes the listening port once <code>seq: 1</code> is verified.</td></tr>
+            <tr><td><strong>Storage Record Swapping</strong></td><td><code>createEncryptedStorage</code> encrypts <code>{ name, value }</code> together and verifies <code>plain.name === name</code> on read.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ==================== TAB 5: CUSTOM BACKENDS ==================== -->
+      <div class="page-view" id="view-backends">
+        <div class="hero-card">
+          <div class="hero-eyebrow">Part 5 &bull; Backend Agnostic</div>
+          <h1>Custom Signaling Backend Integration</h1>
+          <p>Integrate <code>ReliableConversation</code> with your existing Socket.io, Node.js, Go, FastAPI, or Supabase Realtime infrastructure by implementing the 3-method <code>SignalTransport</code> interface.</p>
+        </div>
+
+        <h2>1. The <code>SignalTransport</code> Contract</h2>
+        <pre><code>import type { SignalTransport } from '@harbouli/fprot';
+
+export class CustomSocketSignaling implements SignalTransport {
+  start(handlers: { onMessage: (msg: string) => void; onOnline: (online: boolean) => void }): void {
+    // Subscribe to incoming signals for myPublicKey and report connection status
+  }
+  send(message: string): boolean {
+    // Forward the signed JSON envelope string to the recipient specified in JSON.parse(JSON.parse(message).body).to
+    return true;
+  }
+  stop(): void {
+    // Close sockets and clean up listeners
+  }
+}</code></pre>
+      </div>
+
+    </main>
+
+    <!-- Right Table of Contents -->
+    <aside class="toc">
+      <div class="toc-title">On This Page</div>
+      <a href="#overview" class="toc-link" onclick="switchTab('overview')">Overview &amp; Install</a>
+      <a href="#exports-tree" class="toc-link" onclick="switchTab('overview')">All 36 Exports</a>
+      <a href="#core-classes-section" class="toc-link" onclick="switchTab('overview')">Core Classes</a>
+      <a href="#ReliableConversation" class="toc-link" onclick="jumpToApi('ReliableConversation')">&bull; ReliableConversation</a>
+      <a href="#P2PTcpPeer" class="toc-link" onclick="jumpToApi('P2PTcpPeer')">&bull; P2PTcpPeer</a>
+      <a href="#MessageStore" class="toc-link" onclick="jumpToApi('MessageStore')">&bull; MessageStore</a>
+      <a href="#TcpSocket" class="toc-link" onclick="jumpToApi('TcpSocket')">&bull; TcpSocket</a>
+      <a href="#identity-utils-section" class="toc-link" onclick="switchTab('overview')">Identity &amp; Storage Utils</a>
+      <a href="#crypto-utils-section" class="toc-link" onclick="switchTab('overview')">Session &amp; Native Crypto</a>
+      <a href="#constants" class="toc-link" onclick="jumpToApi('constants')">Constants &amp; Types</a>
+    </aside>
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+
+    const stageData = {
+      1: `<p style="margin-bottom:8px;"><strong>Stage 1 — Out-of-Band Signed Signal Envelope (<code>SignalProtocol.ts</code>):</strong></p>
+<pre style="margin:0;"><code>{
+  "body": "{\\"v\\":1,\\"conversationId\\":\\"room-1\\",\\"from\\":\\"Ed25519_Pub_A\\",\\"to\\":\\"Ed25519_Pub_B\\",\\"type\\":\\"offer\\",\\"challenge\\":\\"Ch_16CharBase64\\",\\"attempt\\":\\"At_16CharBase64\\",\\"sdp\\":\\"...\\"}",
+  "signature": "Ed25519_Detached_Signature_Over_fprot.signaling.v1:body"
+}</code></pre>`,
+      2: `<p style="margin-bottom:8px;"><strong>Stage 2 — Ephemeral WebRTC DataChannel Frame (<code>p2p-tcp-control</code> in <code>P2PTcpPeer.ts</code>):</strong></p>
+<pre style="margin:0;"><code>// Host ControlHello -> Advertises ephemeral X25519 key & bound TCP listener port
+{
+  "type": "hello",
+  "v": 1,
+  "publicKey": "Host_Ephemeral_32B_X25519_PublicKey_Base64URL",
+  "endpoint": { "host": "192.128.0.0", "port": 54321 }
+}</code></pre>`,
+      3: `<p style="margin-bottom:8px;"><strong>Stage 3 — Direct Encrypted TCP Frame (WebRTC Closed, <code>WirePayload</code> + <code>fprot.chat.v1</code>):</strong></p>
+<pre style="margin:0;"><code>// Newline-delimited AEAD frame on the raw TCP socket:
+{"v":1,"nonce":"16CharBase64Nonce","ciphertext":"AEAD_Encrypted_WirePayload_Seq_2"}\\n</code></pre>`
+    };
+
+    function showStage(num, btn) {
+      document.querySelectorAll('.stage-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('stageContent').innerHTML = stageData[num];
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
+      const target = document.getElementById('view-' + tabId);
+      if (target) target.classList.add('active');
+
+      document.querySelectorAll('.top-tab').forEach(t => {
+        t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
+      });
+      document.querySelectorAll('[data-tab-link]').forEach(l => {
+        l.classList.toggle('active', l.getAttribute('data-tab-link') === tabId);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function jumpToApi(id) {
+      switchTab('overview');
+      setTimeout(() => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 40);
+    }
+
+    function toggleTheme() {
+      const root = document.documentElement;
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      document.getElementById('themeIcon').textContent = next === 'dark' ? '☀️' : '🌙';
+    }
+
+    function copyText(text, btn) {
+      navigator.clipboard.writeText(text);
+      const old = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    }
+
+    // Add Copy buttons to all pre blocks
+    document.querySelectorAll('pre').forEach((pre) => {
+      if (pre.querySelector('.copy-btn')) return;
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = 'Copy';
+      btn.onclick = () => copyText(pre.querySelector('code')?.innerText || '', btn);
+      pre.appendChild(btn);
+    });
+
+    // Live sidebar search filter
+    const searchInput = document.getElementById('sidebarSearch');
+    searchInput.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      document.querySelectorAll('#apiNavList .sidebar-item').forEach((item) => {
+        item.style.display = item.textContent.toLowerCase().includes(q) ? 'flex' : 'none';
+      });
+    });
+
+    // '/' keyboard shortcut to focus search
+    window.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement !== searchInput) {
+        e.preventDefault();
+        searchInput.focus();
+      }
+    });
+  </script>
+</body>
+</html>
