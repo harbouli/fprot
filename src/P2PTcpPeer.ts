@@ -72,6 +72,8 @@ export class P2PTcpPeer {
   private role: Role | null = null;
   private txSequence = 0;
   private rxSequence = 0;
+  private helloSent = false;
+  private connectPending = false;
   private _state: PeerState = 'idle';
   private cancelIce?: () => void;
 
@@ -237,6 +239,8 @@ export class P2PTcpPeer {
     this.keys?.privateKey.fill(0);
     this.keys = null;
     this.remotePublicKey = null;
+    this.helloSent = false;
+    this.connectPending = false;
   }
 
   private assertActive(): void {
@@ -280,26 +284,11 @@ export class P2PTcpPeer {
       return;
     }
     this.controlChannel = channel;
-    let helloSent = false;
-    const sendHello = () => {
-      if (helloSent) return;
-      if (!this.keys) {
-        this.fail(new Error('Encryption keys were not initialized'));
-        return;
-      }
-      helloSent = true;
-      const hello: ControlHello = {
-        type: 'hello',
-        v: 1,
-        publicKey: exportPublicKey(this.keys.publicKey),
-        ...(this.role === 'host' && this.endpoint
-          ? { endpoint: this.endpoint }
-          : {}),
-      };
-      channel.send(JSON.stringify(hello));
-    };
-    channel.onopen = sendHello;
+    this.helloSent = false;
+    this.connectPending = false;
+    channel.onopen = () => this.sendHello();
     channel.onmessage = (event: { data: unknown }) => {
+      this.sendHello();
       try {
         this.handleControlMessage(
           JSON.parse(String(event.data)) as ControlMessage
@@ -313,7 +302,35 @@ export class P2PTcpPeer {
         this.fail(new Error('WebRTC control channel failed'));
       }
     };
-    if (channel.readyState === 'open') sendHello();
+    if (channel.readyState === 'open') this.sendHello();
+  }
+
+  private sendHello(): void {
+    if (
+      this.helloSent ||
+      !this.controlChannel ||
+      this.controlChannel.readyState !== 'open'
+    ) {
+      return;
+    }
+    if (!this.keys) {
+      this.fail(new Error('Encryption keys were not initialized'));
+      return;
+    }
+    this.helloSent = true;
+    const hello: ControlHello = {
+      type: 'hello',
+      v: 1,
+      publicKey: exportPublicKey(this.keys.publicKey),
+      ...(this.role === 'host' && this.endpoint
+        ? { endpoint: this.endpoint }
+        : {}),
+    };
+    try {
+      this.controlChannel.send(JSON.stringify(hello));
+    } catch (error) {
+      this.fail(error);
+    }
   }
 
   private handleControlMessage(message: ControlMessage): void {
@@ -344,7 +361,12 @@ export class P2PTcpPeer {
           throw new Error('Host did not provide a valid TCP endpoint');
         }
         this.endpoint = message.endpoint;
+        if (this.connectPending) {
+          this.connectPending = false;
+          this.connectTcp(this.endpoint);
+        }
       } else {
+        this.sendHello();
         this.controlChannel?.send(JSON.stringify({ type: 'connect' }));
       }
       return;
@@ -352,9 +374,8 @@ export class P2PTcpPeer {
 
     if (message.type === 'connect' && this.role === 'guest') {
       if (!this.remotePublicKey || !this.endpoint) {
-        throw new Error(
-          'TCP connect command arrived before the peer handshake'
-        );
+        this.connectPending = true;
+        return;
       }
       this.connectTcp(this.endpoint);
     }

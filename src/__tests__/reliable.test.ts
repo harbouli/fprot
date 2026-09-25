@@ -261,6 +261,17 @@ describe('durable delivery and recovery', () => {
     expect(p.host.state).toBe('connected');
   });
 
+  it('immediately reconnects when partner restarts without waiting for heartbeat timeout', async () => {
+    const p = pair();
+    await connect(p);
+    const oldPeers = [...peers];
+    p.guest.reconnect();
+    await settle();
+    expect(oldPeers[0]?.closed).toBe(true);
+    expect(p.host.state).toBe('connected');
+    expect(p.guest.state).toBe('connected');
+  });
+
   it('keeps the TCP chat working if signaling disconnects', async () => {
     const p = pair();
     await connect(p);

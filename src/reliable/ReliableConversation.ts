@@ -229,44 +229,61 @@ export class ReliableConversation {
       this.options.remotePublicKey,
       this.options.conversationId
     );
-    // Connected peers detect a restarted partner through the encrypted heartbeat timeout.
-    if (this.state === 'connected') return;
+    if (this.state === 'connected') {
+      const isRemoteRestart =
+        (signal.type === 'wake' && this.options.role === 'guest') ||
+        (signal.type === 'request' && this.options.role === 'host') ||
+        (signal.type === 'offer' && this.options.role === 'guest');
+      if (isRemoteRestart) {
+        this.dropPeer();
+        this.setState('reconnecting');
+      } else {
+        return;
+      }
+    }
     if (signal.type === 'wake' && this.options.role === 'guest' && !this.peer) {
       // Reuse an outstanding challenge; repeated wakeups must not invalidate an offer.
       if (!this.challenge) this.challenge = randomId();
       this.signal('request');
-    } else if (
-      signal.type === 'request' &&
-      this.options.role === 'host' &&
-      !this.peer
-    ) {
-      this.challenge = signal.challenge;
-      this.attempt = randomId();
-      const peer = this.newPeer();
-      const generation = this.generation;
-      try {
-        const host = await this.options.getHostOptions!();
-        if (!this.current(peer, generation)) return;
-        const sdp = await peer.createOffer(host);
-        if (this.current(peer, generation)) this.signal('offer', sdp);
-      } catch (error) {
-        if (this.current(peer, generation)) this.retry(error);
+    } else if (signal.type === 'request' && this.options.role === 'host') {
+      if (this.peer && signal.challenge !== this.challenge) {
+        this.dropPeer();
+        this.setState('reconnecting');
+      }
+      if (!this.peer) {
+        this.challenge = signal.challenge;
+        this.attempt = randomId();
+        const peer = this.newPeer();
+        const generation = this.generation;
+        try {
+          const host = await this.options.getHostOptions!();
+          if (!this.current(peer, generation)) return;
+          const sdp = await peer.createOffer(host);
+          if (this.current(peer, generation)) this.signal('offer', sdp);
+        } catch (error) {
+          if (this.current(peer, generation)) this.retry(error);
+        }
       }
     } else if (
       signal.type === 'offer' &&
       this.options.role === 'guest' &&
-      !this.peer &&
       this.challenge &&
       signal.challenge === this.challenge
     ) {
-      this.attempt = signal.attempt;
-      const peer = this.newPeer();
-      const generation = this.generation;
-      try {
-        const sdp = await peer.acceptOffer(signal.sdp);
-        if (this.current(peer, generation)) this.signal('answer', sdp);
-      } catch (error) {
-        if (this.current(peer, generation)) this.retry(error);
+      if (this.peer && signal.attempt !== this.attempt) {
+        this.dropPeer();
+        this.setState('reconnecting');
+      }
+      if (!this.peer) {
+        this.attempt = signal.attempt;
+        const peer = this.newPeer();
+        const generation = this.generation;
+        try {
+          const sdp = await peer.acceptOffer(signal.sdp);
+          if (this.current(peer, generation)) this.signal('answer', sdp);
+        } catch (error) {
+          if (this.current(peer, generation)) this.retry(error);
+        }
       }
     } else if (
       signal.type === 'answer' &&
