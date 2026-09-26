@@ -32,6 +32,9 @@ export class ReliableConversation {
   private attempt = '';
   private answered = false;
   private retries = 0;
+  private retryPaused = false;
+  private retiredChallenges = new Set<string>();
+  private retiredAttempts = new Set<string>();
   private retryTimer?: ReturnType<typeof setTimeout>;
   private deadline?: ReturnType<typeof setTimeout>;
   private heartbeat?: ReturnType<typeof setInterval>;
@@ -115,12 +118,19 @@ export class ReliableConversation {
     if (!this.active) return;
     this.publishMessages();
     this.online = true;
+    this.retryPaused = false;
     this.setState('reconnecting');
     this.options.signaling.start({
       onOnline: (online) => {
         if (!this.active) return;
         this.signalOnline = online;
-        if (online && this.online && this.state !== 'connected' && !this.peer)
+        if (
+          online &&
+          this.online &&
+          !this.retryPaused &&
+          this.state !== 'connected' &&
+          !this.peer
+        )
           this.discover();
       },
       onMessage: (raw) => {
@@ -157,6 +167,7 @@ export class ReliableConversation {
       clearTimeout(this.retryTimer);
       this.setState('offline');
     } else {
+      this.retryPaused = false;
       this.retries = 0;
       this.setState('reconnecting');
       this.discover();
@@ -166,9 +177,20 @@ export class ReliableConversation {
   /** Call when the active network changes even if internet availability stays true. */
   reconnect(): void {
     if (!this.active || !this.online) return;
+    this.retryPaused = false;
+    this.retries = 0;
     this.dropPeer();
     this.setState('reconnecting');
     this.discover();
+  }
+
+  /** Stop active retries while retaining the journal and incoming signaling. */
+  pauseReconnect(): void {
+    if (!this.active) return;
+    this.retryPaused = true;
+    clearTimeout(this.retryTimer);
+    this.dropPeer();
+    this.setState('stopped');
   }
 
   stop(): void {
@@ -201,7 +223,7 @@ export class ReliableConversation {
   }
 
   private discover(): void {
-    if (!this.active || !this.online || this.peer) return;
+    if (!this.active || !this.online || this.retryPaused || this.peer) return;
     if (this.options.role === 'guest') {
       if (!this.challenge) this.challenge = randomId();
       this.signal('request');
@@ -211,7 +233,7 @@ export class ReliableConversation {
 
   private scheduleRetry(): void {
     clearTimeout(this.retryTimer);
-    if (!this.active || !this.online || this.peer) return;
+    if (!this.active || !this.online || this.retryPaused || this.peer) return;
     const delay = Math.min(
       this.timing.max,
       this.timing.min * 2 ** Math.min(this.retries++, 10)
@@ -229,24 +251,17 @@ export class ReliableConversation {
       this.options.remotePublicKey,
       this.options.conversationId
     );
-    if (this.state === 'connected') {
-      const isRemoteRestart =
-        (signal.type === 'wake' && this.options.role === 'guest') ||
-        (signal.type === 'request' && this.options.role === 'host') ||
-        (signal.type === 'offer' && this.options.role === 'guest');
-      if (isRemoteRestart) {
-        this.dropPeer();
-        this.setState('reconnecting');
-      } else {
-        return;
-      }
-    }
-    if (signal.type === 'wake' && this.options.role === 'guest' && !this.peer) {
-      // Reuse an outstanding challenge; repeated wakeups must not invalidate an offer.
+    if (signal.type === 'wake' && this.options.role === 'guest') {
+      // A wake alone is not proof that the live peer restarted. Repeat the
+      // current request; a healthy host ignores it, a restarted host answers it.
+      this.resumeDiscovery();
       if (!this.challenge) this.challenge = randomId();
       this.signal('request');
     } else if (signal.type === 'request' && this.options.role === 'host') {
+      if (this.retiredChallenges.has(signal.challenge)) return;
+      this.resumeDiscovery();
       if (this.peer && signal.challenge !== this.challenge) {
+        this.remember(this.retiredChallenges, this.challenge);
         this.dropPeer();
         this.setState('reconnecting');
       }
@@ -270,8 +285,14 @@ export class ReliableConversation {
       this.challenge &&
       signal.challenge === this.challenge
     ) {
+      if (this.retiredAttempts.has(signal.attempt)) return;
+      this.resumeDiscovery();
       if (this.peer && signal.attempt !== this.attempt) {
+        this.remember(this.retiredAttempts, this.attempt);
         this.dropPeer();
+        // dropPeer clears the challenge; keep the one that authenticated this
+        // replacement offer so the host will accept the answer.
+        this.challenge = signal.challenge;
         this.setState('reconnecting');
       }
       if (!this.peer) {
@@ -302,6 +323,19 @@ export class ReliableConversation {
         if (this.current(peer, generation)) this.retry(error);
       }
     }
+  }
+
+  private resumeDiscovery(): void {
+    if (!this.retryPaused) return;
+    this.retryPaused = false;
+    this.retries = 0;
+    this.setState('reconnecting');
+    this.scheduleRetry();
+  }
+
+  private remember(values: Set<string>, value: string): void {
+    if (value) values.add(value);
+    if (values.size > 64) values.delete(values.values().next().value!);
   }
 
   private current(peer: SessionTransport, generation: number): boolean {
@@ -351,6 +385,8 @@ export class ReliableConversation {
   }
 
   private connected(): void {
+    if (this.state === 'connected') return;
+    clearTimeout(this.retryTimer);
     clearTimeout(this.deadline);
     this.lastReceived = Date.now();
     this.retries = 0;

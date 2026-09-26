@@ -272,6 +272,38 @@ describe('durable delivery and recovery', () => {
     expect(p.guest.state).toBe('connected');
   });
 
+  it('reconnects when the host restarts without looping on repeated handshake packets', async () => {
+    const p = pair();
+    await connect(p);
+    const firstOffer = p.sa.sent.find(
+      (raw) => JSON.parse(JSON.parse(raw).body).type === 'offer'
+    )!;
+
+    p.host.reconnect();
+    await settle();
+
+    expect(p.host.state).toBe('connected');
+    expect(p.guest.state).toBe('connected');
+    const count = peers.length;
+    p.sb.handlers?.onMessage(firstOffer);
+    await settle();
+    expect(peers).toHaveLength(count);
+    expect(p.host.state).toBe('connected');
+    expect(p.guest.state).toBe('connected');
+  });
+
+  it('lets an incoming peer request resume a paused conversation', async () => {
+    const p = pair();
+    await connect(p);
+
+    p.host.pauseReconnect();
+    p.guest.reconnect();
+    await settle();
+
+    expect(p.host.state).toBe('connected');
+    expect(p.guest.state).toBe('connected');
+  });
+
   it('keeps the TCP chat working if signaling disconnects', async () => {
     const p = pair();
     await connect(p);
