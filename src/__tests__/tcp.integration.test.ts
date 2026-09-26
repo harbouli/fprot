@@ -1,77 +1,7 @@
 /** @jest-environment node */
-import { afterEach, expect, it, jest } from '@jest/globals';
+import { afterEach, expect, it } from '@jest/globals';
 import { P2PTcpPeer } from '../P2PTcpPeer';
 import { createSessionKeys, encryptJson } from '../internal/crypto';
-
-// Only ICE/DTLS are simulated here. TCP sockets and encryption are real.
-jest.mock('react-native-webrtc', () => {
-  let id = 0;
-  const registry = new Map();
-  class Channel {
-    readyState = 'connecting';
-    other?: Channel;
-    onopen?: () => void;
-    onmessage?: (event: { data: string }) => void;
-    send(data: string) {
-      setImmediate(() => this.other?.onmessage?.({ data }));
-    }
-    close() {
-      this.readyState = 'closed';
-    }
-  }
-  class Peer {
-    id = String(++id);
-    localDescription: unknown;
-    iceGatheringState = 'complete';
-    channel?: Channel;
-    host?: Peer;
-    ondatachannel?: (event: { channel: Channel }) => void;
-    constructor() {
-      registry.set(this.id, this);
-    }
-    createDataChannel() {
-      this.channel = new Channel();
-      return this.channel;
-    }
-    async createOffer() {
-      return { type: 'offer', sdp: this.id };
-    }
-    async createAnswer() {
-      return { type: 'answer', sdp: this.id };
-    }
-    async setLocalDescription(value: unknown) {
-      this.localDescription = value;
-    }
-    async setRemoteDescription(value: { type: string; sdp: string }) {
-      if (value.type === 'offer') this.host = registry.get(value.sdp);
-      else {
-        const guest: Peer = registry.get(value.sdp);
-        const channel = new Channel();
-        guest.channel = channel;
-        channel.other = this.channel;
-        this.channel!.other = channel;
-        guest.ondatachannel?.({ channel });
-        setImmediate(() => {
-          channel.readyState = 'open';
-          this.channel!.readyState = 'open';
-          channel.onopen?.();
-          this.channel!.onopen?.();
-        });
-      }
-    }
-    close() {
-      registry.delete(this.id);
-    }
-  }
-  return {
-    RTCPeerConnection: Peer,
-    RTCSessionDescription: class {
-      constructor(value: object) {
-        Object.assign(this, value);
-      }
-    },
-  };
-});
 
 const sessions: P2PTcpPeer[] = [];
 afterEach(() => sessions.splice(0).forEach((peer) => peer.close()));
@@ -186,13 +116,16 @@ it('prevents Wireshark packet sniffing from reading any plaintext, metadata, or 
       listenHost: '127.0.0.1',
     });
     // Route Guest's TCP connection through the Wireshark sniffer proxy
-    const hostInternal = host as unknown as {
-      endpoint: { host: string; port: number };
-    };
-    realHostPort = hostInternal.endpoint.port;
-    hostInternal.endpoint = { host: '127.0.0.1', port: proxyPort };
+    const decodedOffer = JSON.parse(offer);
+    const offerPayload = JSON.parse(decodedOffer.sdp);
+    realHostPort = offerPayload.endpoint.port;
+    offerPayload.endpoint.port = proxyPort;
+    const proxiedOffer = JSON.stringify({
+      ...decodedOffer,
+      sdp: JSON.stringify(offerPayload),
+    });
 
-    await host.acceptAnswer(await guest.acceptOffer(offer));
+    await host.acceptAnswer(await guest.acceptOffer(proxiedOffer));
     await connections;
 
     const secretText = 'TOP_SECRET_WIRESHARK_TEST_994821';

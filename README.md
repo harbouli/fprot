@@ -1,14 +1,15 @@
 # fprot
 
-> **Encrypted peer-to-peer TCP messaging for React Native, negotiated via WebRTC.**
+> **Encrypted peer-to-peer TCP messaging with optional Tor anonymity for React Native.**
 
-`fprot` creates private, direct peer-to-peer messaging sessions between mobile devices. WebRTC is used exclusively during connection setup to discover peers, exchange an ephemeral public key, and advertise the TCP endpoint. Once both peers authenticate the TCP stream, **WebRTC is closed and all application messages travel directly over an encrypted raw TCP socket**.
+`fprot` creates private, direct peer-to-peer messaging sessions between mobile devices. Ephemeral keys and TCP endpoints are exchanged via direct signaling, then **all application messages travel directly over an authenticated, end-to-end encrypted TCP stream** with optional Tor SOCKS5 proxy routing.
 
 ---
 
 ## Features
 
-- **Raw TCP Transport**: Built-in native TCP sockets (Swift BSD sockets on iOS, Kotlin `ServerSocket`/`Socket` on Android) carry 100% of application messages. Zero application data flows through WebRTC data channels.
+- **Raw TCP Transport**: Built-in native TCP sockets (Swift BSD sockets on iOS, Kotlin `ServerSocket`/`Socket` on Android) carry 100% of application messages.
+- **Tor Anonymity & SOCKS5 Routing**: Route outbound connections through Tor (`127.0.0.1:9050` or Orbot) with full domain resolution support for `.onion` hidden services.
 - **Built-in Native Cryptography**: Every frame is authenticated and encrypted natively using X25519 + SHA-256 + AES-256-GCM and RFC 8032 Ed25519 signatures (Apple `CryptoKit` on iOS, Kotlin/JCA on Android) with zero external crypto dependencies.
 - **Strict Anti-Replay Sequencing**: Strict sequence numbers reject duplicated, modified, or out-of-order frames.
 - **Pinned Identity Keys (MITM-Proof)**: Supports Ed25519 identity keys pinned out-of-band to prevent signaling server spoofing or impersonation attacks.
@@ -32,10 +33,10 @@ In your React Native project root:
 
 ```sh
 # Using npm:
-npm install @harbouli/fprot react-native-webrtc @react-native-async-storage/async-storage react-native-keychain @react-native-community/netinfo
+npm install @harbouli/fprot @react-native-async-storage/async-storage react-native-keychain @react-native-community/netinfo
 
 # Using Yarn:
-yarn add @harbouli/fprot react-native-webrtc @react-native-async-storage/async-storage react-native-keychain @react-native-community/netinfo
+yarn add @harbouli/fprot @react-native-async-storage/async-storage react-native-keychain @react-native-community/netinfo
 ```
 
 ### 2. iOS Configuration
@@ -301,7 +302,7 @@ It includes:
 See [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) for complete technical documentation, including:
 - High-level architecture and component diagrams
 - Cryptographic details (X25519 ECDH, `AES-256-GCM` authenticated encryption, RFC 8032 Ed25519 signatures)
-- Complete sequence diagrams for connection, WebRTC teardown, and TCP framing
+- Complete sequence diagrams for connection and TCP framing
 - NAT traversal requirements and relay architectures
 
 ---

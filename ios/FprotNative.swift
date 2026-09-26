@@ -486,16 +486,67 @@ public class FprotNative: RCTEventEmitter {
     resolve(nil)
   }
 
-  @objc(tcpConnect:host:port:timeoutMs:resolve:reject:)
+  private func socksReadExact(fd: Int32, count: Int, timeoutMs: Int) -> [UInt8]? {
+    var buffer = [UInt8](repeating: 0, count: count)
+    var totalRead = 0
+    let startTime = DispatchTime.now()
+    while totalRead < count {
+      var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+      let elapsedMs = Int((DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000)
+      let remainingTimeout = max(1, timeoutMs - elapsedMs)
+      let pollRes = Darwin.poll(&pfd, 1, Int32(remainingTimeout))
+      if pollRes <= 0 {
+        return nil
+      }
+      let n = buffer.withUnsafeMutableBytes { ptr -> Int in
+        return Darwin.read(fd, ptr.baseAddress! + totalRead, count - totalRead)
+      }
+      if n <= 0 {
+        return nil
+      }
+      totalRead += n
+    }
+    return buffer
+  }
+
+  private func socksWriteAll(fd: Int32, data: [UInt8], timeoutMs: Int) -> Bool {
+    var totalWritten = 0
+    let startTime = DispatchTime.now()
+    while totalWritten < data.count {
+      var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+      let elapsedMs = Int((DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds) / 1_000_000)
+      let remainingTimeout = max(1, timeoutMs - elapsedMs)
+      let pollRes = Darwin.poll(&pfd, 1, Int32(remainingTimeout))
+      if pollRes <= 0 {
+        return false
+      }
+      let n = data.withUnsafeBytes { ptr -> Int in
+        return Darwin.write(fd, ptr.baseAddress! + totalWritten, data.count - totalWritten)
+      }
+      if n <= 0 {
+        return false
+      }
+      totalWritten += n
+    }
+    return true
+  }
+
+  @objc(tcpConnect:host:port:timeoutMs:proxyHost:proxyPort:resolve:reject:)
   public func tcpConnect(
     _ socketId: Double,
     host: String,
     port: Double,
     timeoutMs: Double,
+    proxyHost: String?,
+    proxyPort: Double,
     resolve: @escaping RCTPromiseResolveBlock,
     reject: @escaping RCTPromiseRejectBlock
   ) {
     let sockId = Int(socketId)
+    let useProxy = (proxyHost != nil && !proxyHost!.isEmpty && proxyPort > 0)
+    let targetConnectHost = useProxy ? proxyHost! : host
+    let targetConnectPort = useProxy ? Int(proxyPort) : Int(port)
+
     ioQueue.async { [weak self] in
       guard let self = self else { return }
       var hints = addrinfo()
@@ -503,10 +554,10 @@ public class FprotNative: RCTEventEmitter {
       hints.ai_socktype = SOCK_STREAM
       hints.ai_protocol = IPPROTO_TCP
       var res: UnsafeMutablePointer<addrinfo>?
-      let portStr = String(Int(port))
-      let gai = getaddrinfo(host, portStr, &hints, &res)
+      let portStr = String(targetConnectPort)
+      let gai = getaddrinfo(targetConnectHost, portStr, &hints, &res)
       if gai != 0 || res == nil {
-        reject("TCP_CONNECT_ERR", "Unable to resolve host \(host)", nil)
+        reject("TCP_CONNECT_ERR", "Unable to resolve host \(targetConnectHost)", nil)
         return
       }
       defer { freeaddrinfo(res) }
@@ -535,7 +586,7 @@ public class FprotNative: RCTEventEmitter {
         let pollRes = Darwin.poll(&pfd, 1, Int32(max(1, Int(timeoutMs))))
         if pollRes <= 0 {
           Darwin.close(fd)
-          reject("TCP_CONNECT_TIMEOUT", "Timed out connecting to \(host):\(Int(port))", nil)
+          reject("TCP_CONNECT_TIMEOUT", "Timed out connecting to \(targetConnectHost):\(targetConnectPort)", nil)
           return
         }
         var soError: Int32 = 0
@@ -546,6 +597,108 @@ public class FprotNative: RCTEventEmitter {
           Darwin.close(fd)
           reject("TCP_CONNECT_ERR", msg, nil)
           return
+        }
+      }
+
+      if useProxy {
+        let timeoutInt = max(1, Int(timeoutMs))
+        if !self.socksWriteAll(fd: fd, data: [0x05, 0x01, 0x00], timeoutMs: timeoutInt) {
+          Darwin.close(fd)
+          reject("TCP_CONNECT_ERR", "SOCKS5 proxy greeting write failed", nil)
+          return
+        }
+        guard let greetingResp = self.socksReadExact(fd: fd, count: 2, timeoutMs: timeoutInt) else {
+          Darwin.close(fd)
+          reject("TCP_CONNECT_TIMEOUT", "SOCKS5 proxy greeting timed out", nil)
+          return
+        }
+        if greetingResp[0] != 0x05 || greetingResp[1] != 0x00 {
+          Darwin.close(fd)
+          reject("TCP_CONNECT_ERR", "SOCKS5 proxy rejected authentication (method: \(greetingResp[1]))", nil)
+          return
+        }
+
+        var connectReq: [UInt8] = [0x05, 0x01, 0x00]
+        var ipv4 = in_addr()
+        var ipv6 = in6_addr()
+        let portInt = Int(port)
+        let portHi = UInt8((portInt >> 8) & 0xFF)
+        let portLo = UInt8(portInt & 0xFF)
+
+        if inet_pton(AF_INET, host, &ipv4) == 1 {
+          connectReq.append(0x01)
+          withUnsafeBytes(of: &ipv4.s_addr) { connectReq.append(contentsOf: $0) }
+        } else if inet_pton(AF_INET6, host, &ipv6) == 1 {
+          connectReq.append(0x04)
+          withUnsafeBytes(of: &ipv6) { connectReq.append(contentsOf: $0) }
+        } else {
+          let hostBytes = Array(host.utf8)
+          if hostBytes.count > 255 {
+            Darwin.close(fd)
+            reject("TCP_CONNECT_ERR", "Hostname exceeds SOCKS5 limit of 255 bytes", nil)
+            return
+          }
+          connectReq.append(0x03)
+          connectReq.append(UInt8(hostBytes.count))
+          connectReq.append(contentsOf: hostBytes)
+        }
+        connectReq.append(portHi)
+        connectReq.append(portLo)
+
+        if !self.socksWriteAll(fd: fd, data: connectReq, timeoutMs: timeoutInt) {
+          Darwin.close(fd)
+          reject("TCP_CONNECT_ERR", "SOCKS5 connect request write failed", nil)
+          return
+        }
+
+        guard let headerResp = self.socksReadExact(fd: fd, count: 4, timeoutMs: timeoutInt) else {
+          Darwin.close(fd)
+          reject("TCP_CONNECT_TIMEOUT", "SOCKS5 connect response timed out", nil)
+          return
+        }
+        if headerResp[0] != 0x05 || headerResp[1] != 0x00 {
+          Darwin.close(fd)
+          let rep = headerResp[1]
+          let errMap: [UInt8: String] = [
+            0x01: "General SOCKS server failure",
+            0x02: "Connection not allowed by ruleset",
+            0x03: "Network unreachable",
+            0x04: "Host unreachable",
+            0x05: "Connection refused",
+            0x06: "TTL expired",
+            0x07: "Command not supported",
+            0x08: "Address type not supported",
+          ]
+          let desc = errMap[rep] ?? "Code \(rep)"
+          reject("TCP_CONNECT_ERR", "SOCKS5 connect to \(host):\(portInt) failed: \(desc)", nil)
+          return
+        }
+
+        let atyp = headerResp[3]
+        var remainingAddrBytes = 0
+        if atyp == 0x01 {
+          remainingAddrBytes = 4 + 2
+        } else if atyp == 0x03 {
+          guard let lenByte = self.socksReadExact(fd: fd, count: 1, timeoutMs: timeoutInt) else {
+            Darwin.close(fd)
+            reject("TCP_CONNECT_TIMEOUT", "SOCKS5 domain length read timed out", nil)
+            return
+          }
+          remainingAddrBytes = Int(lenByte[0]) + 2
+        } else if atyp == 0x04 {
+          remainingAddrBytes = 16 + 2
+        } else {
+          Darwin.close(fd)
+          reject("TCP_CONNECT_ERR", "SOCKS5 unsupported bound address type \(atyp)", nil)
+          return
+        }
+
+        if remainingAddrBytes > 0 {
+          guard let _ = self.socksReadExact(fd: fd, count: remainingAddrBytes, timeoutMs: timeoutInt) else {
+            Darwin.close(fd)
+            reject("TCP_CONNECT_TIMEOUT", "SOCKS5 bound address read timed out", nil)
+            return
+          }
         }
       }
 

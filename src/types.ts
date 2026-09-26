@@ -32,14 +32,32 @@ export interface IceServer {
   credential?: string;
 }
 
+export interface SocksProxyOptions {
+  /** Proxy host address, e.g. '127.0.0.1' */
+  host: string;
+  /** Proxy port, e.g. 9050 (Tor) or 5350 (Orbot) */
+  port: number;
+  /** Optional SOCKS5 username */
+  username?: string;
+  /** Optional SOCKS5 password */
+  password?: string;
+}
+
 export interface P2PTcpPeerOptions {
+  /** @deprecated WebRTC has been removed from fprot. This option is ignored. */
   iceServers?: IceServer[];
-  /** Maximum wait for non-trickle ICE candidate gathering. */
+  /** @deprecated WebRTC has been removed from fprot. This option is ignored. */
   iceGatheringTimeoutMs?: number;
   /** Maximum wait when opening the TCP client socket. */
   tcpConnectTimeoutMs?: number;
   /** Maximum encrypted line size accepted from the network. */
   maxFrameBytes?: number;
+  /** Optional Tor / SOCKS5 proxy configuration for outbound TCP connections. */
+  proxy?: SocksProxyOptions;
+  /**
+   * If true, suppresses clearnet fallback and enforces Tor-only routing.
+   */
+  torMode?: boolean;
 }
 
 export interface PeerEventMap {

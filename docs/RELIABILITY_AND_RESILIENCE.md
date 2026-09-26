@@ -31,7 +31,7 @@ In reality, **TCP only guarantees reliability within the lifespan of a single op
 - **`P2PTcpPeer` is Strictly Single-Use and Disposable**:
   - A `P2PTcpPeer` instance can transition from `idle` $\rightarrow$ `signaling` $\rightarrow$ `negotiating` $\rightarrow$ `tcp-connecting` $\rightarrow$ `connected` $\rightarrow$ `closed`/`failed` **exactly once**.
   - Calling `createOffer()` or `acceptOffer()` a second time throws `Error('A P2PTcpPeer instance can establish only one session')`.
-  - When a socket error, decryption error, or close occurs, `P2PTcpPeer.dispose()` destroys the TCP socket, closes the TCP server, closes WebRTC, and zeroes out the ephemeral X25519 private key in memory (`this.keys?.privateKey.fill(0)`).
+  - When a socket error, decryption error, or close occurs, `P2PTcpPeer.dispose()` destroys the TCP socket, closes the TCP server, and zeroes out the ephemeral X25519 private key in memory (`this.keys?.privateKey.fill(0)`).
 - **`ReliableConversation` is Persistent and Self-Healing**:
   - Whenever `ReliableConversation` needs to connect or reconnect, `newPeer()` instantiates a **brand-new `P2PTcpPeer`**, increments `this.generation`, generates fresh ephemeral X25519 keys, invokes `getHostOptions()` to fetch the device's *current* IP address, and negotiates a fresh TCP connection.
 

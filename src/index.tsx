@@ -69,7 +69,7 @@ export type {
   TcpSocketServer,
 } from './internal/tcp';
 
-// Low-Level WebRTC SDP Offer/Answer Envelope Helpers
+// Low-Level Signaling Offer/Answer Envelope Helpers
 export {
   SIGNAL_VERSION,
   encodeSignal as encodePeerSignal,
@@ -103,6 +103,7 @@ export type {
   P2PTcpPeerOptions,
   PeerEventMap,
   PeerState,
+  SocksProxyOptions,
   TcpHostOptions,
   Unsubscribe,
 } from './types';

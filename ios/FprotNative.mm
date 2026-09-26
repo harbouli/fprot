@@ -17,6 +17,8 @@ RCT_EXTERN_METHOD(tcpConnect:(double)socketId
                   host:(NSString *)host
                   port:(double)port
                   timeoutMs:(double)timeoutMs
+                  proxyHost:(NSString *)proxyHost
+                  proxyPort:(double)proxyPort
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 

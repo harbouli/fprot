@@ -28,7 +28,7 @@ export function decodeSignal(
     (value as Partial<SignalEnvelope>).type !== expectedType ||
     typeof (value as Partial<SignalEnvelope>).sdp !== 'string'
   ) {
-    throw new Error(`Expected a version 1 WebRTC ${expectedType}`);
+    throw new Error(`Expected a version 1 ${expectedType}`);
   }
   return value as SignalEnvelope;
 }

@@ -3,6 +3,7 @@ import type {
   P2PMessage,
   P2PTcpPeerOptions,
   PeerEventMap,
+  SocksProxyOptions,
   TcpHostOptions,
   Unsubscribe,
 } from '../types';
@@ -61,6 +62,12 @@ export interface ReliableConversationOptions {
   storage: KeyValueStorage;
   signaling: SignalTransport;
   peerOptions?: P2PTcpPeerOptions;
+  /** Optional Tor / SOCKS5 proxy configuration for peer-to-peer TCP connections. */
+  torProxy?: SocksProxyOptions;
+  /**
+   * If true, enforces Tor-only proxying for outbound TCP connections.
+   */
+  torOnly?: boolean;
   retryMinMs?: number;
   retryMaxMs?: number;
   handshakeTimeoutMs?: number;

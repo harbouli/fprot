@@ -99,6 +99,8 @@ new ReliableConversation(options: ReliableConversationOptions)
 | `storage` | `KeyValueStorage` | *Required* | Async key-value store (typically wrapped with `createEncryptedStorage`). |
 | `signaling` | `SignalTransport` | *Required* | Out-of-band signaling transport (`WebSocketSignaling` or custom). |
 | `peerOptions` | `P2PTcpPeerOptions` | `undefined` | Passed to underlying `P2PTcpPeer` instances (`maxFrameBytes` must be $\ge 32768$). |
+| `torProxy` | `SocksProxyOptions` | `undefined` | Optional SOCKS5 proxy configuration (`{ host: '127.0.0.1', port: 9050 }`) to route TCP connections through Tor. |
+| `torOnly` | `boolean` | `false` | When true, enforces Tor-only routing for outbound connections to prevent IP leaks. |
 | `retryMinMs` | `number` | `1000` | Minimum base reconnect backoff delay in milliseconds. |
 | `retryMaxMs` | `number` | `30000` | Maximum base reconnect backoff delay in milliseconds. |
 | `handshakeTimeoutMs` | `number` | `45000` | Deadline for a spawned `P2PTcpPeer` to reach `'connected'`. |
@@ -120,7 +122,7 @@ new ReliableConversation(options: ReliableConversationOptions)
 ---
 
 ### 1.2 `P2PTcpPeer`
-Low-level, single-session transport that negotiates ephemeral X25519 keys and a TCP endpoint over an ordered WebRTC data channel (`p2p-tcp-control`), transitions traffic to an authenticated raw TCP stream, and closes WebRTC.
+Low-level, single-session transport that exchanges ephemeral X25519 public keys and TCP endpoints through lightweight signals, establishes an authenticated, end-to-end encrypted TCP stream, and supports optional Tor SOCKS5 proxy routing.
 
 #### Constructor
 ```ts
@@ -129,18 +131,20 @@ new P2PTcpPeer(options?: P2PTcpPeerOptions)
 
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `iceServers` | `IceServer[]` | `[]` | STUN/TURN servers for WebRTC candidate gathering. |
-| `iceGatheringTimeoutMs` | `number` | `12000` | Timeout in ms for non-trickle ICE candidate gathering. |
+| `iceServers` | `IceServer[]` | `[]` | *(Deprecated)* WebRTC has been removed; ignored. |
+| `iceGatheringTimeoutMs` | `number` | `12000` | *(Deprecated)* WebRTC has been removed; ignored. |
 | `tcpConnectTimeoutMs` | `number` | `10000` | Timeout in ms for the Guest's direct TCP socket connection. |
 | `maxFrameBytes` | `number` | `1048576` (1 MB) | Maximum allowed byte length for an encrypted TCP line (`\n`-delimited). |
+| `proxy` | `SocksProxyOptions` | `undefined` | Optional SOCKS5 proxy configuration (`{ host: '127.0.0.1', port: 9050 }`). |
+| `torMode` | `boolean` | `false` | When true, enforces Tor-only routing for outbound connections. |
 
 #### Properties & Methods
 - **`peer.state: PeerState`**: `'idle' | 'signaling' | 'negotiating' | 'tcp-connecting' | 'connected' | 'closed' | 'failed'`.
-- **`await peer.createOffer(host: TcpHostOptions): Promise<string>`**: Starts a local TCP listener, generates ephemeral X25519 keys, gathers WebRTC ICE candidates, and returns a JSON-encoded offer string.
-- **`await peer.acceptOffer(offer: string): Promise<string>`**: Applies the Host's offer, generates ephemeral X25519 keys, gathers ICE candidates, and returns a JSON-encoded answer string.
-- **`await peer.acceptAnswer(answer: string): Promise<void>`**: Applies the Guest's answer on the Host, triggering the WebRTC data channel handshake and automatic TCP connection.
+- **`await peer.createOffer(host: TcpHostOptions): Promise<string>`**: Starts a local TCP listener, generates ephemeral X25519 keys, and returns a JSON-encoded offer signal with endpoint and public key.
+- **`await peer.acceptOffer(offer: string): Promise<string>`**: Applies the Host's offer, connects TCP to the host endpoint (direct or via Tor), generates ephemeral X25519 keys, and returns a JSON-encoded answer signal.
+- **`await peer.acceptAnswer(answer: string): Promise<void>`**: Applies the Guest's answer on the Host, attaches incoming TCP connection, and finalizes the authenticated libsodium session.
 - **`peer.sendMessage(payload: JsonValue): string`**: Encrypts and writes a JSON payload to the TCP stream with the next monotonic sequence number. Returns the generated 16-char message ID.
-- **`peer.close(): void`**: Closes the TCP socket, listening server, and WebRTC channels, and zeroes the ephemeral X25519 private key in memory (`privateKey.fill(0)`).
+- **`peer.close(): void`**: Closes the TCP socket and listening server, and zeroes the ephemeral X25519 private key in memory (`privateKey.fill(0)`).
 - **`peer.on(event, listener): Unsubscribe`**: Subscribes to `'state'`, `'message'`, `'error'`, or `'close'`.
 
 ---
@@ -270,10 +274,10 @@ Serializes a `Signal` object (`wake | request | offer | answer`) into `body`, si
 Verifies the size limit (`<= 128 KB`), Ed25519 signature (`fprot.signaling.v1:`), sender identity (`from === remoteKey`), recipient identity (`to === localKey`), `conversationId`, and `challenge`/`attempt` 16-character format, returning the validated `Signal`.
 
 ### `encodePeerSignal(type: 'offer' | 'answer', sdp: string): string` *(also exported as `encodeSdpSignal`)*
-Low-level helper used by `P2PTcpPeer` that wraps a raw WebRTC SDP string into `{"v":1,"type":"offer"|"answer","sdp":"..."}`.
+Low-level helper used by `P2PTcpPeer` that wraps a signal payload into `{"v":1,"type":"offer"|"answer","sdp":"..."}`.
 
 ### `decodePeerSignal(input: string, expectedType: 'offer' | 'answer'): SignalEnvelope` *(also exported as `decodeSdpSignal`)*
-Parses and validates a version-1 SDP envelope string produced by `encodePeerSignal`.
+Parses and validates a version-1 signal envelope string produced by `encodePeerSignal`.
 
 ---
 
@@ -302,6 +306,17 @@ Symmetric authenticated encryption (256-bit key, 12-byte `NONCE_BYTES` nonce, an
 
 ### `TcpSocket.createServer(connectionListener)` & `TcpSocket.createConnection(options, connectListener)`
 Unified TCP server and client abstraction (`TcpSocketServer` and `TcpSocketConnection`) that routes through `NativeModules.FprotNative` on React Native or Node's `node:net` in Node/test environments, with automatic data buffering until `markReadyForData()` completes.
+
+### `SocksProxyOptions`
+```ts
+export interface SocksProxyOptions {
+  host: string;        // Proxy host, e.g. '127.0.0.1'
+  port: number;        // Proxy port, e.g. 9050 (Tor) or 5350 (Orbot)
+  username?: string;   // Optional SOCKS5 username
+  password?: string;   // Optional SOCKS5 password
+}
+```
+When provided in `TcpConnectOptions` or `P2PTcpPeerOptions`, the client negotiates RFC 1928 SOCKS5 before establishing the stream. Remote destination hostnames (including `.onion` addresses) are resolved remotely by the Tor proxy (`ATYP 0x03`), preventing DNS leaks.
 
 ---
 

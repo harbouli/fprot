@@ -743,11 +743,11 @@
           <div class="hero-eyebrow">● Built-In Native Swift &amp; Kotlin Crypto + TCP Engine</div>
           <h1>Peer-to-Peer Encrypted TCP Messaging for React Native</h1>
           <p>
-            <code>@harbouli/fprot</code> uses WebRTC exclusively as a temporary handshake channel to discover peers and exchange ephemeral X25519 keys. Once authenticated over a direct raw TCP socket, WebRTC is closed and 100% of application traffic travels over end-to-end encrypted TCP.
+            <code>@harbouli/fprot</code> provides authenticated, end-to-end encrypted peer-to-peer TCP messaging for React Native with optional Tor anonymity. Ephemeral public keys and TCP endpoints are exchanged via signed signals, and 100% of application traffic travels over native encrypted TCP.
           </p>
           <div class="install-bar">
-            <div><span class="prompt">$</span>npm install @harbouli/fprot react-native-webrtc</div>
-            <button class="copy-btn" style="position:static;" onclick="copyText('npm install @harbouli/fprot react-native-webrtc', this)">Copy</button>
+            <div><span class="prompt">$</span>npm install @harbouli/fprot</div>
+            <button class="copy-btn" style="position:static;" onclick="copyText('npm install @harbouli/fprot', this)">Copy</button>
           </div>
         </div>
 
@@ -776,7 +776,7 @@
             <span class="inspector-title">Interactive Wire Protocol Inspector</span>
             <div class="stage-buttons">
               <button class="stage-btn active" onclick="showStage(1, this)">Stage 1: Signed Broker Signal</button>
-              <button class="stage-btn" onclick="showStage(2, this)">Stage 2: WebRTC Control Channel</button>
+              <button class="stage-btn" onclick="showStage(2, this)">Stage 2: Offer &amp; Answer Payloads</button>
               <button class="stage-btn" onclick="showStage(3, this)">Stage 3: Encrypted TCP Frame</button>
             </div>
           </div>
@@ -845,16 +845,16 @@
             <span class="api-name">P2PTcpPeer</span>
             <span class="badge badge-class">Class &bull; src/P2PTcpPeer.ts</span>
           </div>
-          <p>Single-session peer-to-peer transport. Gathers non-trickle WebRTC ICE candidates, exchanges ephemeral 32-byte X25519 public keys and the Host's TCP endpoint over an ordered WebRTC data channel (<code>p2p-tcp-control</code>), verifies a mutual encrypted TCP <code>ready</code> frame (<code>seq: 1</code>), and immediately closes WebRTC and the TCP listener.</p>
+          <p>Single-session peer-to-peer transport. Exchanges ephemeral 32-byte X25519 public keys and the Host's TCP endpoint via signed offer/answer signals, connects directly or through a Tor SOCKS5 proxy, verifies a mutual encrypted TCP <code>ready</code> frame (<code>seq: 1</code>), and closes the TCP listener.</p>
           <div class="sig-box">new P2PTcpPeer(options?: P2PTcpPeerOptions)</div>
           <table>
             <thead><tr><th>Member</th><th>Signature</th><th>Behavior</th></tr></thead>
             <tbody>
-              <tr><td><code>createOffer(host)</code></td><td><code>Promise&lt;string&gt;</code></td><td>Starts TCP listener on <code>host.listenHost</code>/<code>port</code>, creates X25519 keys, gathers ICE candidates, and returns encoded offer.</td></tr>
-              <tr><td><code>acceptOffer(offer)</code></td><td><code>Promise&lt;string&gt;</code></td><td>Applies remote offer SDP, creates X25519 keys, gathers ICE candidates, and returns encoded answer.</td></tr>
-              <tr><td><code>acceptAnswer(answer)</code></td><td><code>Promise&lt;void&gt;</code></td><td>Applies Guest answer SDP on the Host; triggers control channel handshake and TCP connection.</td></tr>
+              <tr><td><code>createOffer(host)</code></td><td><code>Promise&lt;string&gt;</code></td><td>Starts TCP listener on <code>host.listenHost</code>/<code>port</code>, creates X25519 keys, and returns encoded offer with endpoint.</td></tr>
+              <tr><td><code>acceptOffer(offer)</code></td><td><code>Promise&lt;string&gt;</code></td><td>Parses host endpoint and public key, connects TCP (clearnet or Tor), creates X25519 keys, and returns encoded answer.</td></tr>
+              <tr><td><code>acceptAnswer(answer)</code></td><td><code>Promise&lt;void&gt;</code></td><td>Applies Guest answer on the Host and attaches the incoming TCP socket.</td></tr>
               <tr><td><code>sendMessage(payload)</code></td><td><code>string</code></td><td>Encrypts payload with next monotonic <code>txSequence</code> and writes newline-delimited frame to TCP socket.</td></tr>
-              <tr><td><code>close()</code></td><td><code>void</code></td><td>Closes TCP socket, server, and WebRTC, and zeroes ephemeral private key in memory (<code>privateKey.fill(0)</code>).</td></tr>
+              <tr><td><code>close()</code></td><td><code>void</code></td><td>Closes TCP socket and listening server, and zeroes ephemeral private key in memory (<code>privateKey.fill(0)</code>).</td></tr>
             </tbody>
           </table>
         </div>
@@ -982,7 +982,7 @@ secretboxKeygen() / secretboxSeal(plain, nonce12, key32) / secretboxOpen(cipher,
 decodeSignal(raw: string, localKey: string, remoteKey: string, conversationId: string): Signal
 encodePeerSignal(type: 'offer' | 'answer', sdp: string): string
 decodePeerSignal(input: string, expectedType: 'offer' | 'answer'): SignalEnvelope</div>
-          <p>Reliable Ed25519-signed signaling codec (<code>fprot.signaling.v1:</code>) and low-level WebRTC SDP offer/answer codec.</p>
+          <p>Reliable Ed25519-signed signaling codec (<code>fprot.signaling.v1:</code>) and low-level signal envelope codec.</p>
         </div>
 
         <div class="api-block" id="constants">
@@ -1004,7 +1004,7 @@ decodePeerSignal(input: string, expectedType: 'offer' | 'answer'): SignalEnvelop
         <div class="hero-card">
           <div class="hero-eyebrow">Part 2 &bull; Architecture Deep Dive</div>
           <h1>What is Signaling &amp; How Connection Setup Works</h1>
-          <p>How two mobile devices solve the P2P Bootstrap Paradox using Ed25519-signed envelopes, anti-replay challenge/attempt nonces, and an ephemeral WebRTC control channel that self-destructs once TCP connects.</p>
+          <p>How two mobile devices solve the P2P Bootstrap Paradox using Ed25519-signed envelopes, anti-replay challenge/attempt nonces, and direct or Tor-proxied TCP handshakes.</p>
         </div>
 
         <h2>1. The P2P Bootstrap Paradox</h2>
@@ -1040,7 +1040,7 @@ sequenceDiagram
         </div>
 
         <h2>3. Why Repeated <code>wake</code> Signals Never Invalidate In-Flight Offers</h2>
-        <p>In <code>ReliableConversation.ts</code> (line 237), when the Guest receives a <code>wake</code> signal from the Host, it checks <code>if (!this.challenge) this.challenge = randomId()</code>. By reusing an outstanding <code>challenge</code> rather than overwriting it, a duplicate <code>wake</code> packet never invalidates an <code>offer</code> that the Host is currently gathering ICE candidates for.</p>
+        <p>In <code>ReliableConversation.ts</code>, when the Guest receives a <code>wake</code> signal from the Host, it checks <code>if (!this.challenge) this.challenge = randomId()</code>. By reusing an outstanding <code>challenge</code> rather than overwriting it, a duplicate <code>wake</code> packet never invalidates an <code>offer</code> that the Host is currently generating.</p>
 
         <h2>4. Reference Broker Hardening (<code>server/signaling.mjs</code>)</h2>
         <table>
@@ -1138,7 +1138,7 @@ sequenceDiagram
             <tr><td><strong>Malicious Signaling Server (MITM)</strong></td><td>All SDP offers/answers are signed with Ed25519 (<code>fprot.signaling.v1:</code>) and verified against the pinned <code>remotePublicKey</code>.</td></tr>
             <tr><td><strong>Cross-Protocol Signature Replay</strong></td><td>Strict domain separation prefixes: <code>fprot.broker.v1:</code> vs <code>fprot.signaling.v1:</code> vs <code>fprot.identity.check</code>.</td></tr>
             <tr><td><strong>TCP Ciphertext Reflection</strong></td><td><code>WirePayload.sender</code> is authenticated inside the ciphertext and checked against <code>this.role === 'host' ? 'guest' : 'host'</code>.</td></tr>
-            <tr><td><strong>Unauthorized Port Scanning</strong></td><td>Host TCP server immediately destroys any socket connecting before WebRTC delivers <code>remotePublicKey</code>, and closes the listening port once <code>seq: 1</code> is verified.</td></tr>
+            <tr><td><strong>Unauthorized Port Scanning</strong></td><td>Host TCP server immediately destroys any socket connecting before signaling key exchange delivers <code>remotePublicKey</code>, and closes the listening port once <code>seq: 1</code> is verified.</td></tr>
             <tr><td><strong>Storage Record Swapping</strong></td><td><code>createEncryptedStorage</code> encrypts <code>{ name, value }</code> together and verifies <code>plain.name === name</code> on read.</td></tr>
           </tbody>
         </table>
@@ -1196,16 +1196,21 @@ export class CustomSocketSignaling implements SignalTransport {
   "body": "{\\"v\\":1,\\"conversationId\\":\\"room-1\\",\\"from\\":\\"Ed25519_Pub_A\\",\\"to\\":\\"Ed25519_Pub_B\\",\\"type\\":\\"offer\\",\\"challenge\\":\\"Ch_16CharBase64\\",\\"attempt\\":\\"At_16CharBase64\\",\\"sdp\\":\\"...\\"}",
   "signature": "Ed25519_Detached_Signature_Over_fprot.signaling.v1:body"
 }</code></pre>`,
-      2: `<p style="margin-bottom:8px;"><strong>Stage 2 — Ephemeral WebRTC DataChannel Frame (<code>p2p-tcp-control</code> in <code>P2PTcpPeer.ts</code>):</strong></p>
-<pre style="margin:0;"><code>// Host ControlHello -> Advertises ephemeral X25519 key & bound TCP listener port
+      2: `<p style="margin-bottom:8px;"><strong>Stage 2 — Signaling Offer &amp; Answer Payloads (in <code>P2PTcpPeer.ts</code>):</strong></p>
+<pre style="margin:0;"><code>// Host Offer -> Advertises ephemeral X25519 key & reachable TCP host/port
 {
-  "type": "hello",
   "v": 1,
   "publicKey": "Host_Ephemeral_32B_X25519_PublicKey_Base64URL",
-  "endpoint": { "host": "192.128.0.0", "port": 54321 }
+  "endpoint": { "host": "192.168.1.50", "port": 54321 }
+}
+
+// Guest Answer -> Provides guest ephemeral X25519 public key
+{
+  "v": 1,
+  "publicKey": "Guest_Ephemeral_32B_X25519_PublicKey_Base64URL"
 }</code></pre>`,
-      3: `<p style="margin-bottom:8px;"><strong>Stage 3 — Direct Encrypted TCP Frame (WebRTC Closed, <code>WirePayload</code> + <code>fprot.chat.v1</code>):</strong></p>
-<pre style="margin:0;"><code>// Newline-delimited AEAD frame on the raw TCP socket:
+      3: `<p style="margin-bottom:8px;"><strong>Stage 3 — Direct Encrypted TCP Frame (<code>WirePayload</code> + <code>fprot.chat.v1</code>):</strong></p>
+<pre style="margin:0;"><code>// Newline-delimited AEAD frame on the raw TCP socket (direct clearnet or via Tor proxy):
 {"v":1,"nonce":"16CharBase64Nonce","ciphertext":"AEAD_Encrypted_WirePayload_Seq_2"}\\n</code></pre>`
     };
 

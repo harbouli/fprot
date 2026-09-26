@@ -31,7 +31,7 @@ describe('signaling codec', () => {
 
   it('rejects a signal of the wrong type', () => {
     expect(() => decodeSignal(encodeSignal('answer', 'sdp'), 'offer')).toThrow(
-      'Expected a version 1 WebRTC offer'
+      'Expected a version 1 offer'
     );
   });
 });

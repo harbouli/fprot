@@ -2,14 +2,14 @@
 
 > **Multi-Page Documentation Suite**
 > - **[Part 1: Master Architecture & Overview (`HOW_IT_WORKS.md`)](./HOW_IT_WORKS.md)** *(Current Page)*
-> - **[Part 2: Signaling Deep Dive (`SIGNALING_DEEP_DIVE.md`)](./SIGNALING_DEEP_DIVE.md)** — What Signaling is, the Bootstrap Paradox, `wake`/`request`/`offer`/`answer` state machine, `challenge` & `attempt` nonces, `server/signaling.mjs` internals, and WebRTC control channel teardown.
+> - **[Part 2: Signaling Deep Dive (`SIGNALING_DEEP_DIVE.md`)](./SIGNALING_DEEP_DIVE.md)** — What Signaling is, the Bootstrap Paradox, `wake`/`request`/`offer`/`answer` state machine, `challenge` & `attempt` nonces, `server/signaling.mjs` internals, and direct TCP cutover.
 > - **[Part 3: Reliability, Storage & Resilience (`RELIABILITY_AND_RESILIENCE.md`)](./RELIABILITY_AND_RESILIENCE.md)** — Immortal `ReliableConversation` vs. disposable `P2PTcpPeer`, generation fencing, `MessageStore` write-ahead journal, Stop-and-Wait ARQ (`inFlight`), idempotent deduplication, encrypted heartbeats, and exponential backoff with jitter.
 > - **[Part 4: Cryptography & Wire Protocol Reference (`CRYPTOGRAPHY_AND_WIRE_PROTOCOL.md`)](./CRYPTOGRAPHY_AND_WIRE_PROTOCOL.md)** — Complete key inventory, Perfect Forward Secrecy, `LineDecoder` framing, 3-layer TCP packet schemas, and Threat Defense Matrix.
 > - **[Part 5: Custom Backend Integration (`CUSTOM_BACKEND_INTEGRATION.md`)](./CUSTOM_BACKEND_INTEGRATION.md)** — Implementing `SignalTransport` over Socket.io, Express, Supabase Realtime, or REST APIs.
 
 ---
 
-`fprot` provides authenticated, end-to-end encrypted peer-to-peer TCP messaging for React Native applications. WebRTC is used **exclusively during connection setup** to discover reachable endpoints and exchange ephemeral session public keys. The instant both peers mutually authenticate each other over a raw TCP socket (`seq: 1`, `kind: "ready"`), the WebRTC session (`RTCPeerConnection` and `RTCDataChannel`) and the TCP listening server are permanently closed, and all application traffic flows directly across the encrypted TCP stream.
+`fprot` provides authenticated, end-to-end encrypted peer-to-peer TCP messaging for React Native applications with optional Tor anonymity. Ephemeral public keys and reachable endpoints are exchanged via signed signaling envelopes. Once the TCP socket connects (direct clearnet or via a Tor SOCKS5 proxy), mutual authentication occurs via libsodium `crypto_box` (`seq: 1`, `kind: "ready"`), the Host closes its listening port, and 100% of application traffic flows directly across the encrypted TCP stream.
 
 This master specification describes the system architecture, what signaling is and how it works, how reliability and offline persistence are guaranteed, cryptographic specifications, protocol sequence flows, wire frame formats, state machines, and production integration patterns.
 
@@ -21,10 +21,11 @@ This master specification describes the system architecture, what signaling is a
 
 1. **Low-Level Ephemeral Session Transport (`P2PTcpPeer` in [`src/P2PTcpPeer.ts`](../src/P2PTcpPeer.ts))**:
    - Manages **one single-use peer-to-peer session** (`idle` $\rightarrow$ `signaling` $\rightarrow$ `negotiating` $\rightarrow$ `tcp-connecting` $\rightarrow$ `connected` $\rightarrow$ `closed` / `failed`).
-   - Starts a local native TCP server (`Host`) or native TCP client (`Guest`), gathers non-trickle WebRTC ICE candidates, exchanges ephemeral X25519 public keys and the TCP endpoint over an ordered WebRTC data channel (`p2p-tcp-control`), performs a mutually authenticated handshake over TCP, closes WebRTC, and encrypts every newline-delimited TCP frame using native X25519 + SHA-256 + `AES-256-GCM` (`boxSeal`) with strict monotonic sequence numbers (`txSequence` / `rxSequence`).
+   - Starts a local native TCP server (`Host`) or native TCP client (`Guest`), exchanges ephemeral X25519 public keys and the TCP endpoint via signed offer/answer signals, supports direct clearnet or Tor SOCKS5 proxy routing (`127.0.0.1:9050` or Orbot), performs a mutually authenticated handshake over TCP, and encrypts every newline-delimited TCP frame using native X25519 + SHA-256 + `AES-256-GCM` (`boxSeal`) with strict monotonic sequence numbers (`txSequence` / `rxSequence`).
 2. **Resilient Application & Reliability Layer (`ReliableConversation` in [`src/reliable/ReliableConversation.ts`](../src/reliable/ReliableConversation.ts))**:
    - Sits on top of `P2PTcpPeer` as an **immortal supervisor** that survives Wi-Fi/Cellular switches, IP address changes, OS backgrounding, half-open socket drops, and app restarts.
    - Manages pinned long-term Ed25519 identity keys (`loadOrCreateIdentity`), encrypted local write-ahead journaling (`MessageStore` + `createEncryptedStorage`), Stop-and-Wait ARQ delivery acknowledgments (`inFlight` + `ackTimer`), application-layer encrypted heartbeats (`ping`/`pong`), generation fencing (`this.generation`), and automated peer discovery over an authenticated signaling transport (`WebSocketSignaling`).
+   - Supports `torProxy` and `torOnly` modes for guaranteed onion routing without IP leaks.
 
 ```mermaid
 flowchart TD
@@ -69,9 +70,7 @@ flowchart TD
     WSS_A <-->|"1. Signed Signals (wake, request, offer, answer)"| WS
     WSS_B <-->|"1. Signed Signals (wake, request, offer, answer)"| WS
 
-    P2P_A <-.->|"2. Ephemeral WebRTC Control Channel (Closed immediately after TCP ready)"| P2P_B
-
-    TCP_SVR <==>|"3. Direct Encrypted TCP Stream (X25519 + AES-256-GCM + ARQ + Heartbeats)"| TCP_CLI
+    TCP_SVR <==>|"2. Direct or Tor-Proxied Encrypted TCP Stream (X25519 + AES-256-GCM + ARQ + Heartbeats)"| TCP_CLI
 ```
 
 ---
@@ -96,23 +95,21 @@ Two mobile devices cannot simply open a raw TCP socket to each other out of thin
 | :--- | :---: | :--- | :--- |
 | **`wake`** | `Host -> Guest` | `from`, `to`, `conversationId` | Announces that the Host is online and ready to generate an offer. If the Guest is listening and has no active peer, it replies with a `request`. |
 | **`request`** | `Guest -> Host` | `+ challenge` (16 chars) | Initiates a handshake attempt. The Guest generates a random 96-bit base64url `challenge` (`randomId()`). Repeated `wake` signals reuse the same `challenge` so an in-flight offer is never invalidated. |
-| **`offer`** | `Host -> Guest` | `+ challenge`, `attempt`, `sdp` | Upon receiving `request`, the Host spawns a new `P2PTcpPeer`, opens a TCP server port, gathers WebRTC ICE candidates into a self-contained SDP offer, generates a 16-char `attempt` ID, and sends `(challenge, attempt, sdp)`. |
-| **`answer`** | `Guest -> Host` | `+ challenge`, `attempt`, `sdp` | The Guest verifies `signal.challenge === this.challenge`, spawns a new `P2PTcpPeer`, applies the remote SDP offer, gathers its own ICE candidates into an SDP answer, and echoes `(challenge, attempt, sdp)`. |
+| **`offer`** | `Host -> Guest` | `+ challenge`, `attempt`, `sdp` | Upon receiving `request`, the Host spawns a new `P2PTcpPeer`, opens a TCP server port, generates ephemeral X25519 keys, encapsulates `{ v: 1, publicKey, endpoint }` into `sdp`, and sends `(challenge, attempt, sdp)`. |
+| **`answer`** | `Guest -> Host` | `+ challenge`, `attempt`, `sdp` | The Guest verifies `signal.challenge === this.challenge`, spawns a new `P2PTcpPeer`, extracts the endpoint and public key, connects TCP (clearnet or Tor SOCKS5), generates its X25519 keys, encapsulates `{ v: 1, publicKey }` into `sdp`, and echoes `(challenge, attempt, sdp)`. |
 
-### 2.3 Two-Stage Handshake: Broker $\rightarrow$ WebRTC Control Channel $\rightarrow$ Raw TCP
+### 2.3 Handshake Sequence: Signed Broker Signaling $\rightarrow$ Encrypted Raw TCP
 
 1. **Broker Authentication (`WebSocketSignaling.ts` $\leftrightarrow$ `server/signaling.mjs`)**:
    - When a client connects to `server/signaling.mjs`, the server issues a 32-byte hex `challenge` nonce (`{ "type": "challenge", "nonce": "..." }`) with a 10-second deadline.
    - The client proves possession of both the deployment shared token (`FPROT_SIGNAL_TOKEN`, verified via `timingSafeEqual`) and its Ed25519 private key by signing `fprot.broker.v1:${nonce}`.
    - The server verifies the Ed25519 signature using Node's native `crypto.verify` (constructing the ASN.1 DER SPKI key with prefix `302a300506032b6570032100`), registers `peers.set(publicKey, socket)`, and replies `{ "type": "ready" }`.
-2. **WebRTC Control Channel (`p2p-tcp-control` in `P2PTcpPeer.ts`)**:
-   - Once `offer` and `answer` SDP strings are exchanged, WebRTC opens an ordered data channel `p2p-tcp-control`.
-   - The **Host** sends `ControlHello`: `{ "type": "hello", "v": 1, "publicKey": "<Host_X25519_Pub>", "endpoint": { "host": "192.128.0.0", "port": 54321 } }`.
-   - The **Guest** sends `ControlHello`: `{ "type": "hello", "v": 1, "publicKey": "<Guest_X25519_Pub>" }`.
-   - Once the Host receives the Guest's `publicKey` (which unlocks the Host's TCP listener to accept 1 socket), the Host sends `{ "type": "connect" }`.
-3. **Direct TCP Connection & WebRTC Teardown (`markConnected()`)**:
-   - The Guest opens a raw TCP socket (`TcpSocket.createConnection`) to `endpoint.host:endpoint.port` and sends an encrypted TCP frame with `seq: 1, kind: "ready"`.
-   - The Host decrypts and verifies `seq: 1`, replies with its own encrypted TCP frame `seq: 1, kind: "ready"`, and both sides call `markConnected()`, which **immediately closes the WebRTC `RTCDataChannel`, closes the `RTCPeerConnection`, and closes the Host's listening TCP server**.
+2. **Direct or Tor-Proxied TCP Connection (`connectTcp` in `P2PTcpPeer.ts`)**:
+   - Upon receiving the `offer`, the Guest verifies the Host's signature, extracts the Host's reachable `endpoint` (`host` and `port`), and initiates a TCP socket connection via `TcpSocket.createConnection` (directly or through Tor SOCKS5 proxy `127.0.0.1:9050`).
+   - The Guest returns the signed `answer` containing its ephemeral X25519 session public key.
+3. **Mutual TCP Cryptographic Authentication (`markConnected()`)**:
+   - The Guest transmits an authenticated encrypted frame with `seq: 1, kind: "ready"`.
+   - The Host decrypts and verifies `seq: 1`, replies with its own encrypted TCP frame `seq: 1, kind: "ready"`, and both sides call `markConnected()`, which transitions state to `'connected'` and closes the Host's listening server socket so no unauthorized connections can be accepted. Handshake completes in **<50ms**.
 
 ---
 
@@ -169,7 +166,7 @@ Every session uses multi-layered cryptography ensuring end-to-end privacy, **Per
 | :--- | :--- | :--- | :--- |
 | **Long-Term Identity** | Ed25519 (`signDetached`) | Authenticates broker login (`fprot.broker.v1:`) and signs signaling envelopes (`fprot.signaling.v1:`). | Long-term (stored in Keychain / Keystore). |
 | **Broker Authentication** | Ed25519 Signature + Shared Token | Proves possession of public key against a 32-byte server challenge nonce + `timingSafeEqual` token check. | Per WebSocket connection. |
-| **Ephemeral Session Keys** | X25519 (`boxKeypair`) | Ephemeral Diffie-Hellman keypair generated in RAM per connection attempt and exchanged over WebRTC. | Ephemeral (`privateKey.fill(0)` on close). |
+| **Ephemeral Session Keys** | X25519 (`boxKeypair`) | Ephemeral Diffie-Hellman keypair generated in RAM per connection attempt and exchanged in signed offer/answer signals. | Ephemeral (`privateKey.fill(0)` on close). |
 | **TCP Frame Encryption** | `boxSeal` (X25519 + SHA-256 + AES-256-GCM) | Encrypts and authenticates every TCP frame payload with a fresh random 12-byte nonce and strict `seq` counter. | Per TCP frame. |
 | **Local Store Encryption** | `secretboxSeal` (AES-256-GCM) | Encrypts queued and historical messages in `AsyncStorage` / SQLite with record-name binding. | Device-local (`fprot.storage-key.v1`). |
 
@@ -203,20 +200,20 @@ sequenceDiagram
     A->>A: Verify B_ID signature and conversation scope
     A->>A: Save challenge and generate 16-char attempt ID
     A->>A: Spawn P2PTcpPeer (Gen 1), generate X25519 keys, start TCP listener
-    A->>A: Create WebRTC PeerConnection and gather complete Offer SDP
-    A->>S: Signal offer (challenge, attempt, sdp, signed by A_ID)
+    A->>S: Signal offer (challenge, attempt, sdp containing endpoint and pubkey, signed by A_ID)
     S->>B: Forward Signal offer
     B->>B: Verify A_ID signature and match challenge ID
     B->>B: Save attempt, spawn P2PTcpPeer (Gen 1), generate X25519 keys
-    B->>B: Apply Offer SDP and gather complete Answer SDP
-    B->>S: Signal answer (challenge, attempt, sdp, signed by B_ID)
+    B->>B: Connect TCP to Host endpoint (clearnet or via Tor SOCKS5 proxy)
+    B->>S: Signal answer (challenge, attempt, sdp containing pubkey, signed by B_ID)
     S->>A: Forward Signal answer
     A->>A: Verify B_ID signature, challenge, and attempt then call acceptAnswer
+    A->>A: Attach incoming TCP socket from Guest
 ```
 
 ---
 
-### Flow B: Ephemeral WebRTC Control Channel & Direct TCP Cutover
+### Flow B: Direct TCP Connection & Mutual Authentication
 
 ```mermaid
 sequenceDiagram
@@ -225,14 +222,8 @@ sequenceDiagram
     participant B as Guest (P2PTcpPeer)
     participant TCP_A as Host TCP Listener
 
-    Note over A,B: WebRTC Data Channel (p2p-tcp-control) Opens
-    A->>B: ControlHello (A_X25519_Pub, advertised TCP host and port)
-    B->>A: ControlHello (B_X25519_Pub)
-    Note over A: Host stores B_X25519_Pub and unlocks TCP Server for 1 connection
-    A->>B: ControlConnect trigger
-
-    Note over B,TCP_A: Establish Direct TCP Socket
-    B->>TCP_A: Open direct TCP connection to advertised host and port
+    Note over B,TCP_A: Establish TCP Socket (Direct Clearnet or Tor SOCKS5 Proxy)
+    B->>TCP_A: Open TCP connection to advertised host and port
     TCP_A-->>B: TCP Socket Established (NoDelay and KeepAlive enabled)
     
     Note over A,B: Mutual Cryptographic Authentication over TCP
@@ -241,9 +232,7 @@ sequenceDiagram
     A->>B: EncryptedFrame (sender host, seq 1, kind ready)
     B->>B: Decrypt with A_X25519_Pub and verify sender host and seq 1
 
-    Note over A,B: Immediate Teardown of Bootstrap Resources (markConnected)
-    A->>A: Close WebRTC DataChannel and RTCPeerConnection
-    B->>B: Close WebRTC DataChannel and RTCPeerConnection
+    Note over A,B: Connected State & Port Shielding (markConnected)
     A->>A: Close TCP Listening Server (only active peer socket remains)
 ```
 
@@ -284,28 +273,22 @@ Passed to `SignalTransport.send(rawString)`:
 }
 ```
 
-### 2. WebRTC Control Channel Frames (`p2p-tcp-control`)
-Plaintext UTF-8 JSON sent over the temporary ordered WebRTC data channel:
-- **Host `ControlHello`**:
+### 2. Signaling Offer & Answer Payloads
+Plaintext JSON encapsulated in the signal `sdp` string:
+- **Host `Offer` Payload**:
   ```json
   {
-    "type": "hello",
     "v": 1,
     "publicKey": "<Base64URL_32B_X25519_Public_Key>",
-    "endpoint": { "host": "192.128.0.0", "port": 54321 }
+    "endpoint": { "host": "192.168.1.50", "port": 54321 }
   }
   ```
-- **Guest `ControlHello`**:
+- **Guest `Answer` Payload**:
   ```json
   {
-    "type": "hello",
     "v": 1,
     "publicKey": "<Base64URL_32B_X25519_Public_Key>"
   }
-  ```
-- **Host `ControlConnect` Trigger**:
-  ```json
-  { "type": "connect" }
   ```
 
 ### 3. Raw TCP Wire Frame (`EncryptedFrame` + `\n`)
@@ -347,14 +330,14 @@ Decrypting `ciphertext` with `boxOpen` yields `WirePayload` (`v: 2`), whose `mes
 stateDiagram-v2
     [*] --> idle
     idle --> signaling : createOffer or acceptOffer called
-    signaling --> negotiating : ICE gathering complete and SDP ready
-    negotiating --> tcp_connecting : Guest receives ControlConnect over WebRTC
+    signaling --> negotiating : Offer generated (Host) or Offer parsed (Guest)
+    negotiating --> tcp_connecting : Guest initiates TCP connection
     negotiating --> connected : Host verifies Guest TCP ready (seq 1)
     tcp_connecting --> connected : Guest verifies Host TCP ready (seq 1)
     connected --> closed : close called or remote TCP socket ended
     idle --> failed : Invalid host or port options
-    signaling --> failed : ICE gather timeout (12s) or WebRTC failure
-    negotiating --> failed : Invalid ControlHello or WebRTC disconnect
+    signaling --> failed : Key generation failure or cancel
+    negotiating --> failed : Invalid offer/answer payload or cancelled
     tcp_connecting --> failed : TCP connect timeout (10s) or connection refused
     connected --> failed : Decryption failure, seq mismatch, or frame limit exceeded
     failed --> [*]
@@ -388,7 +371,7 @@ stateDiagram-v2
 ### Installation
 
 ```sh
-npm install @harbouli/fprot react-native-webrtc @react-native-async-storage/async-storage react-native-keychain @react-native-community/netinfo
+npm install @harbouli/fprot @react-native-async-storage/async-storage react-native-keychain @react-native-community/netinfo
 ```
 
 ### iOS Configuration
@@ -561,7 +544,9 @@ export function ChatScreen({ friendPublicKey, isHost }: { friendPublicKey: strin
 
 1. **Local Area Network (LAN) / Wi-Fi**:
    Devices on the same Wi-Fi or subnet communicate directly over TCP. The Host dynamically advertises its current LAN IP (`192.168.x.x` or `10.x.x.x`) via `getHostOptions()`.
-2. **Virtual Private Networks (Mesh VPN / Tailscale / WireGuard / ZeroTier)**:
+2. **Tor Onion Hidden Services & SOCKS5 Proxy Routing (Tox-style Anonymity)**:
+   The Guest routes outbound connections through a local Tor SOCKS5 proxy (`127.0.0.1:9050` or Orbot on port `5350`) using `torProxy: { host: '127.0.0.1', port: 9050 }`. The Host can be reachable via a Tor v3 `.onion` hidden service address or public IP without NAT traversal issues or STUN/UDP leaks.
+3. **Virtual Private Networks (Mesh VPN / Tailscale / WireGuard / ZeroTier)**:
    Devices connected through a mesh VPN receive stable virtual IPv4/IPv6 addresses (`100.x.y.z`) and communicate directly over encrypted TCP across the internet as if on the same LAN.
-3. **Arbitrary Internet / Cellular Carriers (CGNAT)**:
-   Standard WebRTC STUN/TURN traversal establishes the initial `p2p-tcp-control` channel across carrier NATs, but cellular Carrier-Grade NAT (CGNAT) firewalls typically drop unsolicited incoming raw TCP `SYN` packets. When connecting two mobile devices across different cellular carriers without a mesh VPN, point `advertiseHost` to a lightweight TCP port forwarder or encrypted TCP relay—because every frame is encrypted with `boxSeal` (`X25519 + SHA-256 + AES-256-GCM`), the TCP relay forwards opaque ciphertext without any access to session keys or plaintext messages.
+4. **Arbitrary Internet / Cellular Carriers (CGNAT)**:
+   When connecting two mobile devices across different cellular carriers without Tor or a mesh VPN, point `advertiseHost` to a lightweight TCP port forwarder or encrypted TCP relay—because every frame is encrypted with `boxSeal` (`X25519 + SHA-256 + AES-256-GCM`), the TCP relay forwards opaque ciphertext without any access to session keys or plaintext messages.

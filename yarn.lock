@@ -1713,7 +1713,6 @@ __metadata:
     react: "npm:19.2.3"
     react-native: "npm:0.86.2"
     react-native-builder-bob: "npm:^0.43.1"
-    react-native-webrtc: "npm:^124.0.8"
     release-it: "npm:^21.0.1"
     turbo: "npm:^2.10.8"
     typescript: "npm:^6.0.3"
@@ -1721,7 +1720,6 @@ __metadata:
   peerDependencies:
     react: "*"
     react-native: "*"
-    react-native-webrtc: ">=124.0.8"
   bin:
     fprot-signaling: bin/fprot-signaling.js
   languageName: unknown
@@ -4125,7 +4123,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"base64-js@npm:1.5.1, base64-js@npm:^1.3.1, base64-js@npm:^1.5.1":
+"base64-js@npm:^1.3.1, base64-js@npm:^1.5.1":
   version: 1.5.1
   resolution: "base64-js@npm:1.5.1"
   checksum: 10c0/f23823513b63173a001030fae4f2dabe283b99a9d324ade3ad3d148e218134676f1ee8568c877cd79ec1c53158dcf2d2ba527a97c606618928ba99dd930102bf
@@ -4935,18 +4933,6 @@ __metadata:
     supports-color:
       optional: true
   checksum: 10c0/d79136ec6c83ecbefd0f6a5593da6a9c91ec4d7ddc4b54c883d6e71ec9accb5f67a1a5e96d00a328196b5b5c86d365e98d8a3a70856aaf16b4e7b1985e67f5a6
-  languageName: node
-  linkType: hard
-
-"debug@npm:4.3.4":
-  version: 4.3.4
-  resolution: "debug@npm:4.3.4"
-  dependencies:
-    ms: "npm:2.1.2"
-  peerDependenciesMeta:
-    supports-color:
-      optional: true
-  checksum: 10c0/cedbec45298dd5c501d01b92b119cd3faebe5438c3917ff11ae1bff86a6c722930ac9c8659792824013168ba6db7c4668225d845c633fbdafbbf902a6389f736
   languageName: node
   linkType: hard
 
@@ -6118,7 +6104,6 @@ __metadata:
     react-native-monorepo-config: "npm:^0.4.0"
     react-native-safe-area-context: "npm:^5.10.0"
     react-native-test-app: "npm:^5.4.12"
-    react-native-webrtc: "npm:^124.0.8"
   languageName: unknown
   linkType: soft
 
@@ -8485,13 +8470,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ms@npm:2.1.2":
-  version: 2.1.2
-  resolution: "ms@npm:2.1.2"
-  checksum: 10c0/a437714e2f90dbf881b5191d35a6db792efbca5badf112f87b9e1c712aace4b4b9b742dd6537f3edf90fd6f684de897cec230abde57e87883766712ddda297cc
-  languageName: node
-  linkType: hard
-
 "ms@npm:2.1.3, ms@npm:^2.1.3":
   version: 2.1.3
   resolution: "ms@npm:2.1.3"
@@ -9452,18 +9430,6 @@ __metadata:
     init-test-app: scripts/init.mjs
     install-windows-test-app: windows/app.mjs
   checksum: 10c0/33aa2a4983dd06cddceb7261d9092fe3f4d3af103404c0916c4fd090881f2cbe64a8f69d3381ae71bd5e1ff435604f61e52b049e579224e2291ecff96325b35c
-  languageName: node
-  linkType: hard
-
-"react-native-webrtc@npm:^124.0.8":
-  version: 124.0.8
-  resolution: "react-native-webrtc@npm:124.0.8"
-  dependencies:
-    base64-js: "npm:1.5.1"
-    debug: "npm:4.3.4"
-  peerDependencies:
-    react-native: ">=0.60.0"
-  checksum: 10c0/8ee1500caae1478e41fa3a8b14d7a4210260ceb4394e998a48c89d6cc5c4becce73883d546466565f2f585e2c919659f4a1a6ffb81ba23ad82d07b1783fbb967
   languageName: node
   linkType: hard
 

@@ -3,13 +3,13 @@ name: fprot
 description: >-
   Comprehensive guide and procedural runbook for integrating, developing, testing,
   and troubleshooting applications using fprot (authenticated, encrypted peer-to-peer TCP
-  messaging negotiated via WebRTC for React Native). Use whenever working with P2PTcpPeer,
-  ReliableConversation, custom backend signaling, libsodium cryptography, or native mobile builds.
+  messaging with optional Tor anonymity for React Native). Use whenever working with P2PTcpPeer,
+  ReliableConversation, Tor SOCKS5 proxy, libsodium cryptography, or native mobile builds.
 ---
 
 # fprot Skill Guide
 
-`fprot` is an encrypted, authenticated peer-to-peer TCP messaging framework for React Native applications. WebRTC is used exclusively during connection setup to discover network endpoints and exchange ephemeral public keys. Once authenticated over a raw TCP socket, the WebRTC session terminates and all traffic flows directly across TCP with libsodium `crypto_box` encryption.
+`fprot` is an encrypted, authenticated peer-to-peer TCP messaging framework for React Native applications. Ephemeral public keys and TCP endpoints are exchanged via direct signaling (or custom transports). All application traffic flows directly across native TCP with libsodium `crypto_box` encryption, with optional Tor SOCKS5 proxy and `.onion` routing for metadata anonymity.
 
 ---
 
@@ -19,10 +19,10 @@ The library is organized into two primary tiers:
 
 1. **Low-Level Transport (`P2PTcpPeer`)**:
    - Manages one ephemeral peer-to-peer session.
-   - Collects non-trickle ICE candidates.
-   - Negotiates TCP endpoints over an ephemeral WebRTC data channel (`p2p-tcp-control`).
-   - Establishes a direct TCP socket and verifies mutual identity using libsodium `crypto_box`.
-   - Closes WebRTC once TCP is verified; frames application messages with newlines (`\n`).
+   - Negotiates public keys and reachable endpoints directly through lightweight offer/answer signals.
+   - Connects directly or routes through a Tor / SOCKS5 proxy for zero-IP-leak anonymity.
+   - Establishes a native TCP stream and verifies mutual identity using libsodium `crypto_box`.
+   - Frames application messages with newlines (`\n`).
 
 2. **Resilient Application Layer (`ReliableConversation`)**:
    - Pinned long-term Ed25519 identity keys (`loadOrCreateIdentity`).
@@ -30,6 +30,7 @@ The library is organized into two primary tiers:
    - End-to-end signal signing and verification (`SignalProtocol`).
    - Automated reconnection, network change handling, and heartbeat monitoring.
    - Pluggable signaling via `SignalTransport` (`WebSocketSignaling`, Socket.io, Supabase, etc.).
+   - Full support for `torProxy` and `torOnly` modes.
 
 ---
 
@@ -38,7 +39,7 @@ The library is organized into two primary tiers:
 ### Step 1: Install Dependencies
 
 ```sh
-npm install fprot react-native-webrtc react-native-tcp-socket react-native-libsodium @react-native-async-storage/async-storage react-native-keychain @react-native-community/netinfo
+npm install fprot @react-native-async-storage/async-storage react-native-keychain @react-native-community/netinfo
 ```
 
 ### Step 2: Native Configuration

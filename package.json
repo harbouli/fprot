@@ -1,7 +1,7 @@
 {
   "name": "@harbouli/fprot",
   "version": "1.1.3",
-  "description": "Encrypted peer-to-peer TCP messaging negotiated over WebRTC for React Native",
+  "description": "Encrypted peer-to-peer TCP messaging with optional Tor anonymity for React Native",
   "main": "./lib/module/index.js",
   "module": "./lib/module/index.js",
   "react-native": "./lib/module/index.js",
@@ -54,7 +54,8 @@
   },
   "keywords": [
     "react-native",
-    "webrtc",
+    "tor",
+    "socks5",
     "tcp",
     "peer-to-peer",
     "encryption",
@@ -96,7 +97,6 @@
     "react": "19.2.3",
     "react-native": "0.86.2",
     "react-native-builder-bob": "^0.43.1",
-    "react-native-webrtc": "^124.0.8",
     "release-it": "^21.0.1",
     "turbo": "^2.10.8",
     "typescript": "^6.0.3",
@@ -107,8 +107,7 @@
   },
   "peerDependencies": {
     "react": "*",
-    "react-native": "*",
-    "react-native-webrtc": ">=124.0.8"
+    "react-native": "*"
   },
   "workspaces": [
     "example"

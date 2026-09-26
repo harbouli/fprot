@@ -349,8 +349,12 @@ export class ReliableConversation {
 
   private newPeer(): SessionTransport {
     clearTimeout(this.retryTimer);
-    const peer =
-      this.options.createPeer?.() ?? new P2PTcpPeer(this.options.peerOptions);
+    const peerOptions = {
+      ...this.options.peerOptions,
+      proxy: this.options.torProxy ?? this.options.peerOptions?.proxy,
+      torMode: this.options.torOnly ?? this.options.peerOptions?.torMode,
+    };
+    const peer = this.options.createPeer?.() ?? new P2PTcpPeer(peerOptions);
     this.peer = peer;
     this.answered = false;
     const generation = ++this.generation;

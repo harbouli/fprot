@@ -10,6 +10,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
@@ -267,15 +268,33 @@ class FprotNativeModule(private val reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
-  fun tcpConnect(socketId: Double, host: String, port: Double, timeoutMs: Double, promise: Promise) {
+  fun tcpConnect(
+    socketId: Double,
+    host: String,
+    port: Double,
+    timeoutMs: Double,
+    proxyHost: String?,
+    proxyPort: Double,
+    promise: Promise
+  ) {
     val sockId = socketId.toInt()
     executor.execute {
-      val socket = Socket()
+      val socket = if (proxyHost != null && proxyHost.isNotEmpty() && proxyPort > 0) {
+        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress(proxyHost, proxyPort.toInt()))
+        Socket(proxy)
+      } else {
+        Socket()
+      }
       try {
         socket.tcpNoDelay = true
         socket.keepAlive = true
+        val targetAddress = if (proxyHost != null && proxyHost.isNotEmpty() && proxyPort > 0) {
+          InetSocketAddress.createUnresolved(host, port.toInt())
+        } else {
+          InetSocketAddress(host, port.toInt())
+        }
         socket.connect(
-          InetSocketAddress(host, port.toInt()),
+          targetAddress,
           timeoutMs.toInt().coerceAtLeast(1),
         )
         startSocketReader(sockId, socket)

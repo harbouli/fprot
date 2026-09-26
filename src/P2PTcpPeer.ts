@@ -1,5 +1,3 @@
-import { RTCPeerConnection, RTCSessionDescription } from 'react-native-webrtc';
-
 import { EventBus } from './internal/EventBus';
 import { LineDecoder } from './internal/LineDecoder';
 import { TcpSocket } from './internal/tcp';
@@ -15,36 +13,34 @@ import {
 } from './internal/crypto';
 import { decodeSignal, encodeSignal } from './internal/signaling';
 import type {
+  IceServer,
   JsonValue,
   P2PMessage,
   P2PTcpPeerOptions,
   PeerEventMap,
   PeerState,
+  SocksProxyOptions,
   TcpHostOptions,
   Unsubscribe,
 } from './types';
 
-const DEFAULT_ICE_TIMEOUT = 12_000;
 const DEFAULT_TCP_TIMEOUT = 10_000;
 const DEFAULT_MAX_FRAME = 1024 * 1024;
 
 type Role = 'host' | 'guest';
 type TcpServer = ReturnType<typeof TcpSocket.createServer>;
 type TcpConnection = ReturnType<typeof TcpSocket.createConnection>;
-type ControlChannel = ReturnType<RTCPeerConnection['createDataChannel']>;
 
-interface ControlHello {
-  type: 'hello';
+interface PeerOfferPayload {
   v: 1;
   publicKey: string;
-  endpoint?: { host: string; port: number };
+  endpoint: { host: string; port: number };
 }
 
-interface ControlConnect {
-  type: 'connect';
+interface PeerAnswerPayload {
+  v: 1;
+  publicKey: string;
 }
-
-type ControlMessage = ControlHello | ControlConnect;
 
 interface WirePayload {
   v: 2;
@@ -55,16 +51,25 @@ interface WirePayload {
 }
 
 /**
- * Negotiates an ephemeral key and reachable endpoint over WebRTC, then moves all
- * application traffic to an authenticated, end-to-end encrypted TCP stream.
+ * Negotiates an ephemeral public key and reachable endpoint directly or through signaling,
+ * then establishes an authenticated, end-to-end encrypted TCP stream with optional Tor routing.
  */
 export class P2PTcpPeer {
-  private readonly options: Required<P2PTcpPeerOptions>;
+  private readonly options: Required<
+    Omit<
+      P2PTcpPeerOptions,
+      'proxy' | 'torMode' | 'iceServers' | 'iceGatheringTimeoutMs'
+    >
+  > & {
+    proxy?: SocksProxyOptions;
+    torMode: boolean;
+    iceServers?: IceServer[];
+    iceGatheringTimeoutMs?: number;
+  };
   private readonly events = new EventBus();
-  private peerConnection: RTCPeerConnection | null = null;
-  private controlChannel: ControlChannel | null = null;
   private server: TcpServer | null = null;
   private socket: TcpConnection | null = null;
+  private pendingIncomingSocket: TcpConnection | null = null;
   private keys: SessionKeys | null = null;
   private remotePublicKey: Uint8Array | null = null;
   private endpoint: { host: string; port: number } | null = null;
@@ -72,21 +77,18 @@ export class P2PTcpPeer {
   private role: Role | null = null;
   private txSequence = 0;
   private rxSequence = 0;
-  private helloSent = false;
-  private connectPending = false;
   private _state: PeerState = 'idle';
-  private cancelIce?: () => void;
 
   constructor(options: P2PTcpPeerOptions = {}) {
     this.options = {
-      iceServers: options.iceServers ?? [],
-      iceGatheringTimeoutMs:
-        options.iceGatheringTimeoutMs ?? DEFAULT_ICE_TIMEOUT,
+      iceServers: options.torMode ? [] : (options.iceServers ?? []),
+      iceGatheringTimeoutMs: options.iceGatheringTimeoutMs,
       tcpConnectTimeoutMs: options.tcpConnectTimeoutMs ?? DEFAULT_TCP_TIMEOUT,
       maxFrameBytes: options.maxFrameBytes ?? DEFAULT_MAX_FRAME,
+      proxy: options.proxy,
+      torMode: options.torMode ?? false,
     };
     if (
-      this.options.iceGatheringTimeoutMs <= 0 ||
       this.options.tcpConnectTimeoutMs <= 0 ||
       this.options.maxFrameBytes < 256
     ) {
@@ -108,7 +110,7 @@ export class P2PTcpPeer {
     return this.events.on(event, listener);
   }
 
-  /** Starts the reachable TCP listener and returns a self-contained WebRTC offer. */
+  /** Starts the reachable TCP listener and returns a self-contained offer signal. */
   async createOffer(host: TcpHostOptions): Promise<string> {
     this.assertIdle();
     if (!host.advertiseHost.trim()) {
@@ -131,21 +133,13 @@ export class P2PTcpPeer {
       const port = await this.startTcpServer(host);
       this.assertActive();
       this.endpoint = { host: host.advertiseHost, port };
-      const pc = this.createPeerConnection();
-      this.setupControlChannel(
-        pc.createDataChannel('p2p-tcp-control', {
-          ordered: true,
-        })
-      );
-      await pc.setLocalDescription(await pc.createOffer());
-      this.assertActive();
-      await this.waitForIceGathering(pc);
-      this.assertActive();
-      if (!pc.localDescription?.sdp) {
-        throw new Error('WebRTC did not produce a local offer');
-      }
+      const payload: PeerOfferPayload = {
+        v: 1,
+        publicKey: exportPublicKey(this.keys!.publicKey),
+        endpoint: this.endpoint,
+      };
       this.setState('negotiating');
-      return encodeSignal('offer', pc.localDescription.sdp);
+      return encodeSignal('offer', JSON.stringify(payload));
     } catch (error) {
       this.fail(error);
       throw error;
@@ -162,38 +156,81 @@ export class P2PTcpPeer {
       await this.ensureKeys();
       this.assertActive();
       const decoded = decodeSignal(offer, 'offer');
-      const pc = this.createPeerConnection();
-      pc.ondatachannel = (event: { channel: ControlChannel }) =>
-        this.setupControlChannel(event.channel);
-      await pc.setRemoteDescription(
-        new RTCSessionDescription({ type: 'offer', sdp: decoded.sdp })
-      );
-      this.assertActive();
-      await pc.setLocalDescription(await pc.createAnswer());
-      this.assertActive();
-      await this.waitForIceGathering(pc);
-      this.assertActive();
-      if (!pc.localDescription?.sdp) {
-        throw new Error('WebRTC did not produce a local answer');
+      let payload: PeerOfferPayload;
+      try {
+        payload = JSON.parse(decoded.sdp);
+      } catch {
+        throw new Error('Invalid offer payload');
       }
+      if (
+        !payload ||
+        payload.v !== 1 ||
+        typeof payload.publicKey !== 'string' ||
+        !payload.endpoint
+      ) {
+        throw new Error('Invalid offer payload');
+      }
+      const remoteKey = importPublicKey(payload.publicKey);
+      if (remoteKey.length !== 32) {
+        throw new Error('Invalid session public key');
+      }
+      if (
+        !payload.endpoint.host ||
+        !Number.isInteger(payload.endpoint.port) ||
+        payload.endpoint.port < 1 ||
+        payload.endpoint.port > 65_535
+      ) {
+        throw new Error('Host did not provide a valid TCP endpoint');
+      }
+      this.remotePublicKey = remoteKey;
+      this.endpoint = payload.endpoint;
+
+      // Connect to host's TCP endpoint (clearnet direct or through Tor proxy)
+      this.connectTcp(this.endpoint);
+
+      const answerPayload: PeerAnswerPayload = {
+        v: 1,
+        publicKey: exportPublicKey(this.keys!.publicKey),
+      };
       this.setState('negotiating');
-      return encodeSignal('answer', pc.localDescription.sdp);
+      return encodeSignal('answer', JSON.stringify(answerPayload));
     } catch (error) {
       this.fail(error);
       throw error;
     }
   }
 
-  /** Applies the guest's answer. The encrypted TCP connection then opens automatically. */
+  /** Applies the guest's answer. Attaches any pending incoming TCP socket. */
   async acceptAnswer(answer: string): Promise<void> {
-    if (this.role !== 'host' || !this.peerConnection) {
+    if (this.role !== 'host') {
       throw new Error('createOffer must be called before acceptAnswer');
     }
     try {
       const decoded = decodeSignal(answer, 'answer');
-      await this.peerConnection.setRemoteDescription(
-        new RTCSessionDescription({ type: 'answer', sdp: decoded.sdp })
-      );
+      let payload: PeerAnswerPayload;
+      try {
+        payload = JSON.parse(decoded.sdp);
+      } catch {
+        throw new Error('Invalid answer payload');
+      }
+      if (
+        !payload ||
+        payload.v !== 1 ||
+        typeof payload.publicKey !== 'string'
+      ) {
+        throw new Error('Invalid answer payload');
+      }
+      const remoteKey = importPublicKey(payload.publicKey);
+      if (remoteKey.length !== 32) {
+        throw new Error('Invalid session public key');
+      }
+      this.remotePublicKey = remoteKey;
+
+      if (this.pendingIncomingSocket) {
+        const socket = this.pendingIncomingSocket;
+        this.pendingIncomingSocket = null;
+        this.attachSocket(socket);
+      }
     } catch (error) {
       this.fail(error);
       throw error;
@@ -224,28 +261,23 @@ export class P2PTcpPeer {
   }
 
   private dispose(): void {
-    this.cancelIce?.();
-    this.cancelIce = undefined;
-    this.controlChannel?.close();
-    this.peerConnection?.close();
+    this.pendingIncomingSocket?.destroy();
+    this.pendingIncomingSocket = null;
     this.socket?.destroy();
+    this.socket = null;
     if (this.server?.listening) {
       this.server.close();
     }
-    this.controlChannel = null;
-    this.peerConnection = null;
-    this.socket = null;
     this.server = null;
     this.keys?.privateKey.fill(0);
     this.keys = null;
     this.remotePublicKey = null;
-    this.helloSent = false;
-    this.connectPending = false;
   }
 
   private assertActive(): void {
-    if (this.state === 'closed' || this.state === 'failed')
+    if (this.state === 'closed' || this.state === 'failed') {
       throw new Error('Session was cancelled');
+    }
   }
 
   private assertIdle(): void {
@@ -263,129 +295,28 @@ export class P2PTcpPeer {
     this.keys = keys;
   }
 
-  private createPeerConnection(): RTCPeerConnection {
-    const pc = new RTCPeerConnection({ iceServers: this.options.iceServers });
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' && this.state !== 'connected') {
-        this.fail(new Error('WebRTC handshake failed'));
-      }
-    };
-    this.peerConnection = pc;
-    return pc;
-  }
-
-  private setupControlChannel(channel: ControlChannel): void {
-    if (
-      this.controlChannel ||
-      this.state === 'closed' ||
-      this.state === 'failed'
-    ) {
-      channel.close();
-      return;
-    }
-    this.controlChannel = channel;
-    this.helloSent = false;
-    this.connectPending = false;
-    channel.onopen = () => this.sendHello();
-    channel.onmessage = (event: { data: unknown }) => {
-      this.sendHello();
-      try {
-        this.handleControlMessage(
-          JSON.parse(String(event.data)) as ControlMessage
-        );
-      } catch (error) {
-        this.fail(error);
-      }
-    };
-    channel.onerror = () => {
-      if (this.state !== 'connected') {
-        this.fail(new Error('WebRTC control channel failed'));
-      }
-    };
-    if (channel.readyState === 'open') this.sendHello();
-  }
-
-  private sendHello(): void {
-    if (
-      this.helloSent ||
-      !this.controlChannel ||
-      this.controlChannel.readyState !== 'open'
-    ) {
-      return;
-    }
-    if (!this.keys) {
-      this.fail(new Error('Encryption keys were not initialized'));
-      return;
-    }
-    this.helloSent = true;
-    const hello: ControlHello = {
-      type: 'hello',
-      v: 1,
-      publicKey: exportPublicKey(this.keys.publicKey),
-      ...(this.role === 'host' && this.endpoint
-        ? { endpoint: this.endpoint }
-        : {}),
-    };
-    try {
-      this.controlChannel.send(JSON.stringify(hello));
-    } catch (error) {
-      this.fail(error);
-    }
-  }
-
-  private handleControlMessage(message: ControlMessage): void {
-    if (message.type === 'hello') {
-      if (message.v !== 1 || typeof message.publicKey !== 'string') {
-        throw new Error('Invalid peer handshake');
-      }
-      const remoteKey = importPublicKey(message.publicKey);
-      if (remoteKey.length !== 32)
-        throw new Error('Invalid session public key');
-      if (this.remotePublicKey) {
-        if (
-          this.remotePublicKey.length === remoteKey.length &&
-          this.remotePublicKey.every((b, i) => b === remoteKey[i])
-        ) {
-          return;
-        }
-        throw new Error('Invalid peer handshake');
-      }
-      this.remotePublicKey = remoteKey;
-      if (this.role === 'guest') {
-        if (
-          !message.endpoint?.host ||
-          !Number.isInteger(message.endpoint.port) ||
-          message.endpoint.port < 1 ||
-          message.endpoint.port > 65_535
-        ) {
-          throw new Error('Host did not provide a valid TCP endpoint');
-        }
-        this.endpoint = message.endpoint;
-        if (this.connectPending) {
-          this.connectPending = false;
-          this.connectTcp(this.endpoint);
-        }
-      } else {
-        this.sendHello();
-        this.controlChannel?.send(JSON.stringify({ type: 'connect' }));
-      }
-      return;
-    }
-
-    if (message.type === 'connect' && this.role === 'guest') {
-      if (!this.remotePublicKey || !this.endpoint) {
-        this.connectPending = true;
-        return;
-      }
-      this.connectTcp(this.endpoint);
-    }
-  }
-
   private startTcpServer(host: TcpHostOptions): Promise<number> {
     return new Promise((resolve, reject) => {
       const server = TcpSocket.createServer((socket) => {
-        if (!this.remotePublicKey || this.socket) {
+        if (this.socket) {
           socket.destroy();
+          return;
+        }
+        if (!this.remotePublicKey) {
+          if (this.pendingIncomingSocket) {
+            this.pendingIncomingSocket.destroy();
+          }
+          this.pendingIncomingSocket = socket;
+          socket.once('close', () => {
+            if (this.pendingIncomingSocket === socket) {
+              this.pendingIncomingSocket = null;
+            }
+          });
+          socket.once('error', () => {
+            if (this.pendingIncomingSocket === socket) {
+              this.pendingIncomingSocket = null;
+            }
+          });
           return;
         }
         this.attachSocket(socket);
@@ -427,6 +358,7 @@ export class P2PTcpPeer {
         host: endpoint.host,
         port: endpoint.port,
         connectTimeout: this.options.tcpConnectTimeoutMs,
+        proxy: this.options.proxy,
       },
       () => {
         if (this.state === 'closed' || this.state === 'failed') {
@@ -519,8 +451,9 @@ export class P2PTcpPeer {
     this.rxSequence = payload.seq;
 
     if (payload.kind === 'ready') {
-      if (payload.seq !== 1 || this.state === 'connected')
+      if (payload.seq !== 1 || this.state === 'connected') {
         throw new Error('Unexpected TCP ready frame');
+      }
       if (this.role === 'host') {
         this.sendWire({ kind: 'ready' });
       }
@@ -533,7 +466,9 @@ export class P2PTcpPeer {
       payload.message
     ) {
       this.events.emit('message', payload.message);
-    } else throw new Error('Unexpected TCP message');
+    } else {
+      throw new Error('Unexpected TCP message');
+    }
   }
 
   private markConnected(): void {
@@ -545,36 +480,10 @@ export class P2PTcpPeer {
       this.server.close();
     }
     this.server = null;
-    this.controlChannel?.close();
-    this.peerConnection?.close();
-    this.controlChannel = null;
-    this.peerConnection = null;
-  }
-
-  private waitForIceGathering(pc: RTCPeerConnection): Promise<void> {
-    if (pc.iceGatheringState === 'complete') {
-      return Promise.resolve();
+    if (this.pendingIncomingSocket) {
+      this.pendingIncomingSocket.destroy();
+      this.pendingIncomingSocket = null;
     }
-    return new Promise((resolve, reject) => {
-      this.cancelIce = () => {
-        clearTimeout(timeout);
-        pc.onicegatheringstatechange = null;
-        reject(new Error('Session was cancelled'));
-      };
-      const timeout = setTimeout(() => {
-        this.cancelIce = undefined;
-        pc.onicegatheringstatechange = null;
-        reject(new Error('Timed out while gathering WebRTC ICE candidates'));
-      }, this.options.iceGatheringTimeoutMs);
-      pc.onicegatheringstatechange = () => {
-        if (pc.iceGatheringState === 'complete') {
-          clearTimeout(timeout);
-          this.cancelIce = undefined;
-          pc.onicegatheringstatechange = null;
-          resolve();
-        }
-      };
-    });
   }
 
   private setState(state: PeerState): void {

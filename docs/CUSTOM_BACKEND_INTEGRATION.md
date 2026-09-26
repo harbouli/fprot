@@ -330,8 +330,8 @@ When building your backend signaling service:
 2. **Prevent Sender Spoofing**:
    Verify that `envelope.from` matches the authenticated user's registered public key. This prevents malicious users from impersonating other peers during signaling.
 3. **Limit Payload Sizes**:
-   WebRTC SDP strings and ICE candidate envelopes are typically between 1 KB and 64 KB. Set a strict payload limit (e.g. `132 KB`) on your signaling endpoints.
+   Signaling offer/answer payloads are typically small (under 4 KB). Set a strict payload limit (e.g. `128 KB`) on your signaling endpoints.
 4. **Discard Stale Signals**:
-   SDP offers expire quickly (WebRTC ICE candidates usually become stale after 30–60 seconds). Do not store signals in long-term databases. If a recipient is offline, trigger a push notification rather than buffering hours of obsolete SDP strings.
+   Offers expire quickly with reconnection cycles. Do not store signals in long-term databases. If a recipient is offline, trigger a push notification rather than buffering obsolete signal strings.
 5. **No Decryption Required**:
    Your backend never needs any cryptographic keys. Do not attempt to inspect or modify the `sdp` or `signature` fields.
