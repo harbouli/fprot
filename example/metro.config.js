@@ -16,11 +16,32 @@ const config = withMetroConfig(getDefaultConfig(__dirname), {
   conditions: ['fprot-source'],
 });
 
+const defaultResolveRequest = config.resolver.resolveRequest;
+
 config.resolver = {
   ...config.resolver,
   extraNodeModules: {
     ...config.resolver?.extraNodeModules,
-    fprot: root,
+    'fprot': root,
+    '@harbouli/fprot': root,
+  },
+  resolveRequest: (context, moduleName, platform) => {
+    if (
+      moduleName === 'fprot' ||
+      moduleName.startsWith('fprot/') ||
+      moduleName === '@harbouli/fprot' ||
+      moduleName.startsWith('@harbouli/fprot/')
+    ) {
+      context = {
+        ...context,
+        mainFields: ['fprot-source', ...context.mainFields],
+        unstable_conditionNames: [
+          'fprot-source',
+          ...context.unstable_conditionNames,
+        ],
+      };
+    }
+    return defaultResolveRequest(context, moduleName, platform);
   },
 };
 
